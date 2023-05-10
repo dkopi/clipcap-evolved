@@ -226,7 +226,7 @@ def train_model(
     **kwargs,
 ):
     wandb_logger = WandbLogger(
-        project="clipcap_evolved", name=run_name, entity="dawkopi"
+        project="clipcap_evolved", name=run_name, entity="clipcap-dl2"
     )
 
     if torch.cuda.is_available():
