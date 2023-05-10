@@ -3,3 +3,6 @@ data
 checkpoints
 wandb
 todo.txt
+clipcap_evolved
+output.err
+output.out

@@ -1,4 +1,5 @@
 import os
+import signal
 from typing import Tuple, Optional
 import argparse
 import torch
@@ -8,6 +9,8 @@ from torch.utils.data import Dataset, DataLoader
 import lightning as pl
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.tuner import Tuner
+from lightning.pytorch.plugins.environments import SLURMEnvironment
 from transformers import (
     GPT2LMHeadModel,
     GPT2Tokenizer,
@@ -165,7 +168,15 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
 
 
 class TrainingModule(pl.LightningModule):
-    def __init__(self, prefix_length, mlp_hidden_size, lr=1e-4):
+    def __init__(
+        self,
+        prefix_length,
+        mlp_hidden_size,
+        epochs,
+        samples_per_epoch,
+        lr=1e-4,
+        warmup=None,
+    ):
         super().__init__()
         self.save_hyperparameters()
         self.model = CaptioningModel(prefix_length, mlp_hidden_size)
@@ -182,7 +193,17 @@ class TrainingModule(pl.LightningModule):
     def configure_optimizers(self):
         # make it more flexible
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.hparams.lr)
-        return optimizer
+        if self.hparams.warmup is not None:
+            lr_scheduler = CosineWarmupScheduler(
+                optimizer,
+                # todo: make it equal for whole epochs?
+                warmup=self.hparams.warmup * self.hparams.samples_per_epoch,
+                max_iters=self.hparams.epochs * self.hparams.samples_per_epoch,
+                # optimizer, warmup=self.hparams.warmup, max_iters=self.hparams.max_iters
+            )
+            return [optimizer], [{"scheduler": lr_scheduler, "interval": "step"}]
+        else:
+            return optimizer
 
     def _gradient_norm(self, model):
         total_norm = 0.0
@@ -205,9 +226,10 @@ class TrainingModule(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        # todo: put into eval mode?
+        # todo: put into eval mode? or is it done automatically?
         tokens, mask, image = batch
-        output = self(tokens, image, mask)
+        with torch.no_grad():
+            output = self(tokens, image, mask)
         logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
         loss = self.loss_module(logits.reshape(-1, logits.shape[-1]), tokens.flatten())
         self.log("val_loss", loss, prog_bar=True)
@@ -219,15 +241,28 @@ def train_model(
     val_annotations_file,
     val_data_dir,
     batch_size,
-    epochs,
     run_name=None,
     save_name="default",
     checkpoint_path="checkpoints",
+    find_lr=False,
     **kwargs,
 ):
+    if int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0:
+        with open(os.path.join(checkpoint_path, "last_run_id"), "r") as f:
+            run_id = f.read()
+    else:
+        run_id = wandb.util.generate_id()
     wandb_logger = WandbLogger(
-        project="clipcap_evolved", name=run_name, entity="clipcap-dl2"
+        project="clipcap_evolved",
+        name=run_name,
+        entity="clipcap-dl2",
+        id=run_id,
+        resume="allow",
+        log_model=False,
     )
+    os.makedirs(checkpoint_path, exist_ok=True)
+    with open(os.path.join(checkpoint_path, "last_run_id"), "w") as f:
+        f.write(run_id)
 
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
@@ -252,31 +287,35 @@ def train_model(
         batch_size=batch_size,
         shuffle=True,
         drop_last=True,
-        pin_memory=True,
-        num_workers=4,
+        # pin_memory=True,
+        # num_workers=4,
     )
     val_loader = DataLoader(
         val_set,
         batch_size=batch_size,
         drop_last=False,
-        num_workers=4,
+        # num_workers=4,
     )
 
     trainer = pl.Trainer(
         default_root_dir=os.path.join(checkpoint_path, save_name),
         accelerator="gpu" if not str(device).startswith("cpu") else "cpu",
         devices=1,
-        max_epochs=epochs,
+        max_epochs=kwargs["epochs"],
         callbacks=[
             # ModelCheckpoint(
             #     save_weights_only=True, mode="max", monitor="val_acc"
             # ),  # Save the best checkpoint based on the maximum val_acc recorded. Saves only weights and not optimizer
-            LearningRateMonitor("epoch"),
+            LearningRateMonitor("step"),
+            # LearningRateMonitor("epoch"),
         ],
         enable_progress_bar=True,
         logger=wandb_logger,
         log_every_n_steps=10,
+        val_check_interval=1000,
+        plugins=[SLURMEnvironment(requeue_signal=signal.SIGUSR1)],
     )
+
     # trainer.logger._log_graph = (
     #     True  # If True, we plot the computation graph in tensorboard
     # )
@@ -285,8 +324,15 @@ def train_model(
     )
 
     pl.seed_everything(42)
-    model = TrainingModule(**kwargs)
+    model = TrainingModule(samples_per_epoch=len(train_loader), **kwargs)
+
+    if find_lr:
+        print("using lr finder")
+        tuner = Tuner(trainer)
+        tuner.lr_find(model, train_loader, val_loader)
+
     trainer.fit(model, train_loader, val_loader)
+
     # model = CIFARModule.load_from_checkpoint(
     #     trainer.checkpoint_callback.best_model_path
     # )  # Load best checkpoint after training
@@ -319,6 +365,10 @@ def main():
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--mlp_hidden_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--find_lr", action="store_true")
+    parser.add_argument("--run_name", default=None)
+    parser.add_argument("--warmup", type=int, default=None)
+
     args = parser.parse_args()
 
     train_model(
@@ -332,6 +382,9 @@ def main():
         batch_size=args.batch_size,
         mlp_hidden_size=args.mlp_hidden_size,
         lr=args.lr,
+        find_lr=args.find_lr,
+        run_name=args.run_name,
+        warmup=args.warmup,
     )
 
 
