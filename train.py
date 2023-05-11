@@ -16,6 +16,8 @@ from transformers import (
     GPT2Tokenizer,
     CLIPModel,
     CLIPProcessor,
+    T5Tokenizer, 
+    T5ForConditionalGeneration,
 )
 from PIL import Image
 from pycocotools.coco import COCO
@@ -30,8 +32,8 @@ class COCODataset(Dataset):
         annotations_file,
         data_dir,
         prefix_length: int,
+        tokenizer: None,
         max_seq_len: int = 36,
-        gpt2_type: str = "gpt2",
         clip_pretrained_model: str = "openai/clip-vit-base-patch32",
         sample_limit: Optional[int] = None,
     ):
@@ -42,7 +44,7 @@ class COCODataset(Dataset):
         self.sample_limit = sample_limit
         print(f"dataset size: {len(self.coco.imgs)}")
 
-        self.tokenizer = GPT2Tokenizer.from_pretrained(gpt2_type)
+        self.tokenizer = tokenizer
         self.clip_processor = CLIPProcessor.from_pretrained(clip_pretrained_model)
 
     def __len__(self):
@@ -105,6 +107,7 @@ class CaptioningModel(nn.Module):
         mlp_hidden_size: int = 64,
         visual_output_size: int = 768,
         gpt2_pretrained_model="gpt2",
+        flan_pretrained_model="google/flan-t5-small",
         clip_pretrained_model="openai/clip-vit-base-patch32",
         use_unpooled_output: bool = False,
         architecture: str = "mlp",
@@ -120,28 +123,39 @@ class CaptioningModel(nn.Module):
             self.visual_output_size = visual_output_size
 
         self.clip = CLIPModel.from_pretrained(clip_pretrained_model)
-        self.gpt = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
-        self.gpt_embedding_size = self.gpt.transformer.wte.weight.shape[1]
 
         if architecture == "mlp":
+            self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
+            self.lm_embedding_size = self.lm.transformer.wte.weight.shape[1]
             self.mapper = MLP(
                 self.visual_output_size,
                 mlp_hidden_size,
-                self.gpt_embedding_size * prefix_length,
+                self.lm_embedding_size * prefix_length,
             )
         elif architecture == "clipcap":
+            self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
+            self.lm_embedding_size = self.lm.transformer.wte.weight.shape[1]
             self.mapper = ClipCapTransformerMapper(
-                self.visual_output_size, self.gpt_embedding_size, prefix_length, 10, 8
+                self.visual_output_size, self.lm_embedding_size, prefix_length, 10, 8
             )
+        elif architecture == "flan-t5":
+            self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
+            self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
+            self.mapper = MLP(
+                self.visual_output_size,
+                mlp_hidden_size,
+                self.lm_embedding_size * prefix_length,
+            )
+
         else:
             raise ValueError(f"Unknown architecture: {architecture}")
 
         # todo: indicate in the docs that by default these parts are frozen and put to eval mode
         self.clip.eval()
-        self.gpt.eval()
+        self.lm.eval()
         for param in self.clip.parameters():
             param.requires_grad = False
-        for param in self.gpt.parameters():
+        for param in self.lm.parameters():
             param.requires_grad = False
 
     def parameters(self, recurse: bool = True):
@@ -160,12 +174,21 @@ class CaptioningModel(nn.Module):
                 )
             else:
                 prefix = self.clip.vision_model(images)["pooler_output"]
-        embedding_text = self.gpt.transformer.wte(tokens)
+
+        
         prefix_projections = self.mapper(prefix).view(
-            -1, self.prefix_length, self.gpt_embedding_size
+            -1, self.prefix_length, self.lm_embedding_size
         )
-        embedding_cat = torch.cat((prefix_projections, embedding_text), dim=1)
-        out = self.gpt(inputs_embeds=embedding_cat, attention_mask=mask)
+
+        if self.architecture == "flan-t5":
+            out = self.lm(inputs_embeds=prefix_projections, labels=tokens)
+        elif self.architecture == "clipcap" or self.architecture == "mlp": # GPT for now
+            embedding_text = self.lm.transformer.wte(tokens)
+            embedding_cat = torch.cat((prefix_projections, embedding_text), dim=1)
+            out = self.lm(inputs_embeds=embedding_cat, attention_mask=mask)
+        else:
+            raise ValueError(f"Unknown architecture: {self.architecture}")
+        
         return out
 
 
@@ -245,7 +268,12 @@ class TrainingModule(pl.LightningModule):
         tokens, mask, image = batch
         output = self(tokens, image, mask)
         logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
-        loss = self.loss_module(logits.reshape(-1, logits.shape[-1]), tokens.flatten())
+        
+        if self.hparams.arch == "flan-t5":
+            loss = self.loss_module(output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten())
+        elif self.hparams.arch == "mlp" or self.hparams.arch == "clipcap":
+            loss = self.loss_module(logits.reshape(-1, logits.shape[-1]), tokens.flatten())
+        
         self.log(
             "grad_norm", self._gradient_norm(self.model), on_step=True, on_epoch=True
         )
@@ -258,7 +286,12 @@ class TrainingModule(pl.LightningModule):
         with torch.no_grad():
             output = self(tokens, image, mask)
         logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
-        loss = self.loss_module(logits.reshape(-1, logits.shape[-1]), tokens.flatten())
+
+        if self.hparams.arch == "flan-t5":
+            loss = self.loss_module(output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten())
+        elif self.hparams.arch == "mlp" or self.hparams.arch == "clipcap":
+            loss = self.loss_module(logits.reshape(-1, logits.shape[-1]), tokens.flatten())
+
         self.log("val_loss", loss, prog_bar=True)
 
 
@@ -298,16 +331,23 @@ def train_model(
     else:
         device = torch.device("cpu")
 
+    if kwargs["arch"] == "mlp" or kwargs["arch"] == "clipcap":
+        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+    elif kwargs["arch"] == "flan-t5":
+        tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-small")
+    
     train_set = COCODataset(
         annotations_file=annotations_file,
         data_dir=data_dir,
         prefix_length=kwargs["prefix_length"],
+        tokenizer=tokenizer
     )
     val_set = COCODataset(
         annotations_file=val_annotations_file,
         data_dir=val_data_dir,
         prefix_length=kwargs["prefix_length"],
         sample_limit=1000,
+        tokenizer=tokenizer
     )
     train_loader = DataLoader(
         train_set,
@@ -323,6 +363,10 @@ def train_model(
         drop_last=False,
         # num_workers=4,
     )
+
+    plugins = []
+    if os.environ.get("SLURM_JOB_ID"):
+        plugins.append(SLURMEnvironment(requeue_signal=signal.SIGUSR1))
 
     trainer = pl.Trainer(
         default_root_dir=os.path.join(checkpoint_path, save_name),
@@ -341,7 +385,7 @@ def train_model(
         logger=wandb_logger,
         log_every_n_steps=10,
         val_check_interval=1000,
-        plugins=[SLURMEnvironment(requeue_signal=signal.SIGUSR1)],
+        plugins=plugins,
     )
 
     # trainer.logger._log_graph = (
@@ -402,7 +446,7 @@ def main():
     parser.add_argument("--run_name", default=None)
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--use_unpooled_output", action="store_true")
-    parser.add_argument("--arch", default="mlp", choices=["mlp", "clipcap"])
+    parser.add_argument("--arch", default="mlp", choices=["mlp", "clipcap", "flan-t5"])
 
     args = parser.parse_args()
 
