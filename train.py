@@ -24,6 +24,7 @@ from pycocotools.coco import COCO
 import wandb
 import numpy as np
 from clipcap_transformer import ClipCapTransformerMapper
+from generate import generate
 
 
 class COCODataset(Dataset):
@@ -175,7 +176,6 @@ class CaptioningModel(nn.Module):
             else:
                 prefix = self.clip.vision_model(images)["pooler_output"]
 
-        
         prefix_projections = self.mapper(prefix).view(
             -1, self.prefix_length, self.lm_embedding_size
         )
@@ -217,8 +217,9 @@ class TrainingModule(pl.LightningModule):
         mlp_hidden_size,
         use_unpooled_output,
         epochs,
-        arch,
         samples_per_epoch,
+        arch,
+        tokenizer,
         lr=1e-4,
         warmup=None,
     ):
@@ -231,6 +232,7 @@ class TrainingModule(pl.LightningModule):
             architecture=arch,
         )
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
+        self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
     def forward(
         self,
@@ -265,8 +267,19 @@ class TrainingModule(pl.LightningModule):
         return total_norm
 
     def training_step(self, batch, batch_idx):
-        tokens, mask, image = batch
-        output = self(tokens, image, mask)
+        tokens, mask, images = batch
+        
+        # if batch_idx % 10 == 0:
+        #     to_caption = images[:1]
+        #     with torch.no_grad():
+        #         prefix = self.model.clip.vision_model(to_caption)["pooler_output"]
+        #         prefix_projections = self.model.mapper(prefix).view(
+        #             -1, self.hparams.prefix_length, self.model.lm.transformer.wte.weight.shape[1]
+        #         )
+        #         caption = generate(self.model.lm, self.hparams.tokenizer, prefix_projections)
+        #         print(caption)
+
+        output = self(tokens, images, mask)
         
         if self.hparams.arch == "flan-t5":
             loss = self.loss_module(output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten()) #TODO: Do we use our loss or loss from the T5?
@@ -282,9 +295,20 @@ class TrainingModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         # todo: put into eval mode? or is it done automatically?
-        tokens, mask, image = batch
+        tokens, mask, images = batch
+        
+        if batch_idx == 0:
+            to_caption = images[:1]
+            with torch.no_grad():
+                prefix = self.model.clip.vision_model(to_caption)["pooler_output"]
+                prefix_projections = self.model.mapper(prefix).view(
+                    -1, self.hparams.prefix_length, self.model.lm.transformer.wte.weight.shape[1]
+                )
+                caption = generate(self.model.lm, self.hparams.tokenizer, prefix_projections)
+                print(caption)
+
         with torch.no_grad():
-            output = self(tokens, image, mask)
+            output = self(tokens, images, mask)
 
         if self.hparams.arch == "flan-t5":
             loss = self.loss_module(output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten())
@@ -319,6 +343,7 @@ def train_model(
         id=run_id,
         resume="allow",
         log_model=False,
+        offline=True
     )
     os.makedirs(checkpoint_path, exist_ok=True)
     with open(os.path.join(checkpoint_path, "last_run_id"), "w") as f:
@@ -346,7 +371,7 @@ def train_model(
         annotations_file=val_annotations_file,
         data_dir=val_data_dir,
         prefix_length=kwargs["prefix_length"],
-        sample_limit=1000,
+        sample_limit=1,#1000,
         tokenizer=tokenizer
     )
     train_loader = DataLoader(
@@ -384,7 +409,7 @@ def train_model(
         enable_progress_bar=True,
         logger=wandb_logger,
         log_every_n_steps=10,
-        val_check_interval=1000,
+        val_check_interval=10,#1000,
         plugins=plugins,
     )
 
@@ -396,7 +421,7 @@ def train_model(
     )
 
     pl.seed_everything(42)
-    model = TrainingModule(samples_per_epoch=len(train_loader), **kwargs)
+    model = TrainingModule(samples_per_epoch=len(train_loader), tokenizer=tokenizer, **kwargs)
 
     wandb.run.summary["total_params"] = sum(p.numel() for p in model.parameters())
     wandb.run.summary["trainable_params"] = sum(
