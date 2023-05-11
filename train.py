@@ -267,11 +267,11 @@ class TrainingModule(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         tokens, mask, image = batch
         output = self(tokens, image, mask)
-        logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
         
         if self.hparams.arch == "flan-t5":
             loss = self.loss_module(output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten()) #TODO: Do we use our loss or loss from the T5?
         elif self.hparams.arch == "mlp" or self.hparams.arch == "clipcap":
+            logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
             loss = self.loss_module(logits.reshape(-1, logits.shape[-1]), tokens.flatten())
         
         self.log(
@@ -285,11 +285,11 @@ class TrainingModule(pl.LightningModule):
         tokens, mask, image = batch
         with torch.no_grad():
             output = self(tokens, image, mask)
-        logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
 
         if self.hparams.arch == "flan-t5":
             loss = self.loss_module(output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten())
         elif self.hparams.arch == "mlp" or self.hparams.arch == "clipcap":
+            logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
             loss = self.loss_module(logits.reshape(-1, logits.shape[-1]), tokens.flatten())
 
         self.log("val_loss", loss, prog_bar=True)
