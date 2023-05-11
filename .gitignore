@@ -1,5 +1,6 @@
 .venv
 data
+logs
 checkpoints
 wandb
 todo.txt

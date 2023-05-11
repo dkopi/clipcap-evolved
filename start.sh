@@ -2,16 +2,14 @@
 
 #SBATCH --job-name=test
 #SBATCH --nodes=1
-#SBATCH --nodelist=node025
 #SBATCH --ntasks-per-node=1
-#SBATCH --output=output.out
-#SBATCH --error=output.err
-#SBATCH --time=08:15:00
-#SBATCH --partition=defq
+#SBATCH --output=logs/slurm-%j.out
+#SBATCH --error=logs/slurm-%j.err
+#SBATCH --time=00:14:30
 #SBATCH --gres=gpu:1
 #SBATCH --signal=SIGUSR1@90
 
-rm -rf checkpoints wandb
+rm -rf checkpoints
 
 source $HOME/.bashrc
 module load cuda11.7/toolkit/11.7
@@ -21,6 +19,7 @@ import torch
 print(f"cuda: {torch.cuda.is_available()}")
 EOF
 
+# rm -rf $TMPDIR/data
 mkdir -p $TMPDIR/data
 
 echo "unzipping data..."
@@ -31,6 +30,7 @@ echo "unzipping data..."
 
 echo "starting training..."
 
-srun python train.py --annotations_file $TMPDIR/data/annotations/captions_train2014.json --data_dir $TMPDIR/data/train2014 --val_annotations_file $TMPDIR/data/annotations/captions_val2014.json --val_data_dir $TMPDIR/data/val2014 --mlp_hidden_size 256 --batch_size 8 --warmup 1
+# srun python train.py --annotations_file $TMPDIR/data/annotations/captions_train2014.json --data_dir $TMPDIR/data/train2014 --val_annotations_file $TMPDIR/data/annotations/captions_val2014.json --val_data_dir $TMPDIR/data/val2014 --mlp_hidden_size 256 --batch_size 8 --warmup 1 --use_unpooled_output --run_name rich
+srun python train.py --annotations_file $TMPDIR/data/annotations/captions_train2014.json --data_dir $TMPDIR/data/train2014 --val_annotations_file $TMPDIR/data/annotations/captions_val2014.json --val_data_dir $TMPDIR/data/val2014 --mlp_hidden_size 256 --batch_size 8 --warmup 1 --run_name default
 
 

@@ -105,11 +105,16 @@ class CaptioningModel(nn.Module):
         visual_output_size: int = 768,
         gpt2_pretrained_model="gpt2",
         clip_pretrained_model="openai/clip-vit-base-patch32",
+        use_unpooled_output: bool = False,
     ):
         super().__init__()
 
         self.prefix_length = prefix_length
-        self.visual_output_size = visual_output_size
+        self.use_unpooled_output = use_unpooled_output
+        if use_unpooled_output:
+            self.visual_output_size = visual_output_size * 50
+        else:
+            self.visual_output_size = visual_output_size
         self.clip = CLIPModel.from_pretrained(clip_pretrained_model)
         self.gpt = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
         self.gpt_embedding_size = self.gpt.transformer.wte.weight.shape[1]
@@ -138,8 +143,12 @@ class CaptioningModel(nn.Module):
         mask: Optional[torch.Tensor],
     ):
         with torch.no_grad():
-            # todo: try the approach with the unpooled output
-            prefix = self.clip.vision_model(images)["pooler_output"]
+            if self.use_unpooled_output:
+                prefix = self.clip.vision_model(images)["last_hidden_state"].flatten(
+                    start_dim=-2
+                )
+            else:
+                prefix = self.clip.vision_model(images)["pooler_output"]
         embedding_text = self.gpt.transformer.wte(tokens)
         prefix_projections = self.mlp(prefix).view(
             -1, self.prefix_length, self.gpt_embedding_size
@@ -172,6 +181,7 @@ class TrainingModule(pl.LightningModule):
         self,
         prefix_length,
         mlp_hidden_size,
+        use_unpooled_output,
         epochs,
         samples_per_epoch,
         lr=1e-4,
@@ -179,7 +189,9 @@ class TrainingModule(pl.LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters()
-        self.model = CaptioningModel(prefix_length, mlp_hidden_size)
+        self.model = CaptioningModel(
+            prefix_length, mlp_hidden_size, use_unpooled_output=use_unpooled_output
+        )
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
 
     def forward(
@@ -309,6 +321,7 @@ def train_model(
             LearningRateMonitor("step"),
             # LearningRateMonitor("epoch"),
         ],
+        enable_checkpointing=False,
         enable_progress_bar=True,
         logger=wandb_logger,
         log_every_n_steps=10,
@@ -325,6 +338,11 @@ def train_model(
 
     pl.seed_everything(42)
     model = TrainingModule(samples_per_epoch=len(train_loader), **kwargs)
+
+    wandb.run.summary["total_params"] = sum(p.numel() for p in model.parameters())
+    wandb.run.summary["trainable_params"] = sum(
+        p.numel() for p in model.parameters() if p.requires_grad
+    )
 
     if find_lr:
         print("using lr finder")
@@ -368,8 +386,14 @@ def main():
     parser.add_argument("--find_lr", action="store_true")
     parser.add_argument("--run_name", default=None)
     parser.add_argument("--warmup", type=int, default=None)
+    parser.add_argument("--use_unpooled_output", action="store_true")
 
     args = parser.parse_args()
+
+    print("======= args =======")
+    for k, v in vars(args).items():
+        print(f"{k}: {v}")
+    print("====================")
 
     train_model(
         annotations_file=args.annotations_file,
@@ -385,6 +409,7 @@ def main():
         find_lr=args.find_lr,
         run_name=args.run_name,
         warmup=args.warmup,
+        use_unpooled_output=args.use_unpooled_output,
     )
 
 
