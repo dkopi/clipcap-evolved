@@ -270,7 +270,7 @@ class TrainingModule(pl.LightningModule):
         logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
         
         if self.hparams.arch == "flan-t5":
-            loss = self.loss_module(output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten())
+            loss = self.loss_module(output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten()) #TODO: Do we use our loss or loss from the T5?
         elif self.hparams.arch == "mlp" or self.hparams.arch == "clipcap":
             loss = self.loss_module(logits.reshape(-1, logits.shape[-1]), tokens.flatten())
         
