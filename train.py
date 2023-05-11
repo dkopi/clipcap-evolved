@@ -21,6 +21,7 @@ from PIL import Image
 from pycocotools.coco import COCO
 import wandb
 import numpy as np
+from clipcap_transformer import ClipCapTransformerMapper
 
 
 class COCODataset(Dataset):
@@ -106,24 +107,34 @@ class CaptioningModel(nn.Module):
         gpt2_pretrained_model="gpt2",
         clip_pretrained_model="openai/clip-vit-base-patch32",
         use_unpooled_output: bool = False,
+        architecture: str = "mlp",
     ):
         super().__init__()
 
         self.prefix_length = prefix_length
         self.use_unpooled_output = use_unpooled_output
+        self.architecture = architecture
         if use_unpooled_output:
             self.visual_output_size = visual_output_size * 50
         else:
             self.visual_output_size = visual_output_size
+
         self.clip = CLIPModel.from_pretrained(clip_pretrained_model)
         self.gpt = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
         self.gpt_embedding_size = self.gpt.transformer.wte.weight.shape[1]
-        self.mlp = MLP(
-            self.visual_output_size,
-            # (self.gpt_embedding_size * prefix_length) // 2,
-            mlp_hidden_size,
-            self.gpt_embedding_size * prefix_length,
-        )
+
+        if architecture == "mlp":
+            self.mapper = MLP(
+                self.visual_output_size,
+                mlp_hidden_size,
+                self.gpt_embedding_size * prefix_length,
+            )
+        elif architecture == "clipcap":
+            self.mapper = ClipCapTransformerMapper(
+                self.visual_output_size, self.gpt_embedding_size, prefix_length, 10, 8
+            )
+        else:
+            raise ValueError(f"Unknown architecture: {architecture}")
 
         # todo: indicate in the docs that by default these parts are frozen and put to eval mode
         self.clip.eval()
@@ -134,7 +145,7 @@ class CaptioningModel(nn.Module):
             param.requires_grad = False
 
     def parameters(self, recurse: bool = True):
-        return self.mlp.parameters()
+        return self.mapper.parameters()
 
     def forward(
         self,
@@ -150,7 +161,7 @@ class CaptioningModel(nn.Module):
             else:
                 prefix = self.clip.vision_model(images)["pooler_output"]
         embedding_text = self.gpt.transformer.wte(tokens)
-        prefix_projections = self.mlp(prefix).view(
+        prefix_projections = self.mapper(prefix).view(
             -1, self.prefix_length, self.gpt_embedding_size
         )
         embedding_cat = torch.cat((prefix_projections, embedding_text), dim=1)
@@ -183,6 +194,7 @@ class TrainingModule(pl.LightningModule):
         mlp_hidden_size,
         use_unpooled_output,
         epochs,
+        arch,
         samples_per_epoch,
         lr=1e-4,
         warmup=None,
@@ -190,7 +202,10 @@ class TrainingModule(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.model = CaptioningModel(
-            prefix_length, mlp_hidden_size, use_unpooled_output=use_unpooled_output
+            prefix_length,
+            mlp_hidden_size,
+            use_unpooled_output=use_unpooled_output,
+            architecture=arch,
         )
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
 
@@ -387,6 +402,7 @@ def main():
     parser.add_argument("--run_name", default=None)
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--use_unpooled_output", action="store_true")
+    parser.add_argument("--arch", default="mlp", choices=["mlp", "clipcap"])
 
     args = parser.parse_args()
 
@@ -410,6 +426,7 @@ def main():
         run_name=args.run_name,
         warmup=args.warmup,
         use_unpooled_output=args.use_unpooled_output,
+        arch=args.arch,
     )
 
 
