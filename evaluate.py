@@ -3,6 +3,7 @@ import torch.nn.functional as nnf
 from pycocotools.coco import COCO
 import pycocoevalcap
 from pycocoevalcap.cider.cider import Cider
+
 # from pycocoevalcap.spice.spice import Spice
 import PIL
 from PIL import Image
@@ -11,8 +12,7 @@ import os
 
 
 # todo: optimize it, generate captions in batches
-def evaluate(
-    model, tokenizer, images, tokens):
+def evaluate(model, tokenizer, images, tokens, arch: str = "mlp"):
     model.eval()
     references = {}
     hypothesis = {}
@@ -27,7 +27,7 @@ def evaluate(
         embeds = torch.split(embeds, 1)
         # (dim1, dim2)
         for i, image_embeds in enumerate(embeds):
-            caption = generate(model, tokenizer, image_embeds)
+            caption = generate(model, tokenizer, image_embeds, arch=arch)
             hypothesis[i] = [caption]
             references[i] = [tokenizer.decode(tokens[i].cpu().numpy())]
 
@@ -40,7 +40,6 @@ def evaluate(
     }
 
 
-
 # todo: optimize it, generate captions in batches
 def generate(
     model,
@@ -50,16 +49,25 @@ def generate(
     top_p=0.8,  # do we use top_p or temperature?
     temperature=1.0,
     stop_token: str = ".",
+    arch: str = "mlp",
 ):
     model.eval()
     stop_token_index = tokenizer.encode(stop_token)[0]
     filter_value = -float("Inf")
-    generated = embed
+    generated = embed  # TODO: Conditional image "embed"s to encoder input, decoder to special token according to docs
+    if arch == "flan-t5":
+        encoder_input = embed
+        pad_id = tokenizer("<pad>", return_tensors="pt").input_ids.to(embed.device)
+        generated = model.token_to_embed(pad_id)
+
     tokens = None
 
     with torch.no_grad():
         for i in range(entry_length):
-            logits = model.get_logits(generated)
+            if arch == "flan-t5":
+                logits = model.get_logits(encoder_input, generated)
+            else:
+                logits = model.get_logits(generated)
             logits = logits[:, -1, :] / (temperature if temperature > 0 else 1.0)
             # is it a bottleneck?
             sorted_logits, sorted_indices = torch.sort(logits, descending=True)
