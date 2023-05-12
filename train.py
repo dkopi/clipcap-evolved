@@ -315,13 +315,13 @@ def train_model(
         shuffle=True,
         drop_last=True,
         # pin_memory=True,
-        # num_workers=4,
+        num_workers=16,
     )
     val_loader = DataLoader(
         val_set,
         batch_size=batch_size,
         drop_last=False,
-        # num_workers=4,
+        num_workers=16,
     )
 
     trainer = pl.Trainer(
