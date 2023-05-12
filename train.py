@@ -7,7 +7,11 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import lightning as pl
-from lightning.pytorch.callbacks import LearningRateMonitor, TQDMProgressBar, ModelCheckpoint
+from lightning.pytorch.callbacks import (
+    LearningRateMonitor,
+    TQDMProgressBar,
+    ModelCheckpoint,
+)
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.tuner import Tuner
 from lightning.pytorch.plugins.environments import SLURMEnvironment
@@ -16,7 +20,7 @@ from transformers import (
     GPT2Tokenizer,
     CLIPModel,
     CLIPProcessor,
-    T5Tokenizer, 
+    T5Tokenizer,
     T5ForConditionalGeneration,
 )
 from PIL import Image
@@ -89,14 +93,17 @@ class COCODataset(Dataset):
 
 
 class MLP(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
+    def __init__(self, input_size, hidden_size, output_size, dropout=0.2):
         super(MLP, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, output_size)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         # todo: try different activations
+        x = self.dropout(x)
         x = torch.relu(self.fc1(x))
+        x = self.dropout(x)
         x = self.fc2(x)
         return x
 
@@ -112,6 +119,7 @@ class CaptioningModel(nn.Module):
         clip_pretrained_model="openai/clip-vit-base-patch32",
         use_unpooled_output: bool = False,
         architecture: str = "mlp",
+        mlp_dropout: float = 0.2,
     ):
         super().__init__()
 
@@ -132,6 +140,7 @@ class CaptioningModel(nn.Module):
                 self.visual_output_size,
                 mlp_hidden_size,
                 self.lm_embedding_size * prefix_length,
+                dropout=mlp_dropout,
             )
         elif architecture == "clipcap":
             self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
@@ -159,8 +168,8 @@ class CaptioningModel(nn.Module):
         for param in self.lm.parameters():
             param.requires_grad = False
 
-    def parameters(self, recurse: bool = True):
-        return self.mapper.parameters()
+    # def parameters(self, recurse: bool = True):
+    #     return self.mapper.parameters()
 
     def token_to_embed(self, tokens: torch.Tensor):
         if self.architecture == "flan-t5":
@@ -177,9 +186,9 @@ class CaptioningModel(nn.Module):
     def get_image_embeds(self, images: torch.Tensor):
         with torch.no_grad():
             if self.use_unpooled_output:
-                clip_embeds = self.clip.vision_model(images)["last_hidden_state"].flatten(
-                    start_dim=-2
-                )
+                clip_embeds = self.clip.vision_model(images)[
+                    "last_hidden_state"
+                ].flatten(start_dim=-2)
             else:
                 clip_embeds = self.clip.vision_model(images)["pooler_output"]
 
@@ -197,13 +206,15 @@ class CaptioningModel(nn.Module):
 
         if self.architecture == "flan-t5":
             out = self.lm(inputs_embeds=image_embeds, labels=tokens)
-        elif self.architecture == "clipcap" or self.architecture == "mlp": # GPT for now
+        elif (
+            self.architecture == "clipcap" or self.architecture == "mlp"
+        ):  # GPT for now
             embedding_text = self.lm.transformer.wte(tokens)
             embedding_cat = torch.cat((image_embeds, embedding_text), dim=1)
             out = self.lm(inputs_embeds=embedding_cat, attention_mask=mask)
         else:
             raise ValueError(f"Unknown architecture: {self.architecture}")
-        
+
         return out
 
 
@@ -227,12 +238,7 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
 
 class TrainingModule(pl.LightningModule):
     def __init__(
-        self,
-        prefix_length,
-        mlp_hidden_size,
-        use_unpooled_output,
-        arch,
-        **kwargs
+        self, prefix_length, mlp_hidden_size, use_unpooled_output, arch, **kwargs
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -241,9 +247,12 @@ class TrainingModule(pl.LightningModule):
             mlp_hidden_size,
             use_unpooled_output=use_unpooled_output,
             architecture=arch,
+            mlp_dropout=kwargs["mlp_dropout"],
         )
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
-        self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        self.clip_processor = CLIPProcessor.from_pretrained(
+            "openai/clip-vit-base-patch32"
+        )
 
     def forward(
         self,
@@ -283,18 +292,22 @@ class TrainingModule(pl.LightningModule):
         else:
             with torch.no_grad():
                 output = self(tokens, images, mask)
-        
+
         if self.hparams.arch == "flan-t5":
-            loss = self.loss_module(output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten()) #TODO: Do we use our loss or loss from the T5?
+            loss = self.loss_module(
+                output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten()
+            )  # TODO: Do we use our loss or loss from the T5?
         elif self.hparams.arch == "mlp" or self.hparams.arch == "clipcap":
             logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
-            loss = self.loss_module(logits.reshape(-1, logits.shape[-1]), tokens.flatten())
+            loss = self.loss_module(
+                logits.reshape(-1, logits.shape[-1]), tokens.flatten()
+            )
         return loss
 
     def training_step(self, batch, batch_idx):
         tokens, mask, images = batch
         loss = self.get_loss(tokens, images, mask)
-        
+
         self.log(
             "grad_norm", self._gradient_norm(self.model), on_step=True, on_epoch=True
         )
@@ -309,11 +322,9 @@ class TrainingModule(pl.LightningModule):
             to_caption = images[:1]
             with torch.no_grad():
                 image_embeds = self.model.get_image_embeds(to_caption)
-                caption = generate(
-                    self.model, self.hparams.tokenizer, image_embeds
-                )
+                caption = generate(self.model, self.hparams.tokenizer, image_embeds)
                 print(f"caption: {caption}")
-        
+
         if batch_idx < self.hparams.eval_batches:
             scores = evaluate(self.model, self.hparams.tokenizer, images, tokens)
             self.log("cider", scores["cider"], prog_bar=True)
@@ -366,7 +377,7 @@ def train_model(
         tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-small")
 
     clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-    
+
     train_set = COCODataset(
         annotations_file=annotations_file,
         data_dir=data_dir,
@@ -412,7 +423,7 @@ def train_model(
             # ),  # Save the best checkpoint based on the maximum val_acc recorded. Saves only weights and not optimizer
             LearningRateMonitor("step"),
             # LearningRateMonitor("epoch"),
-            TQDMProgressBar(refresh_rate=10)
+            TQDMProgressBar(refresh_rate=10),
         ],
         enable_checkpointing=False,
         enable_progress_bar=True,
@@ -421,18 +432,24 @@ def train_model(
         val_check_interval=1000,
         plugins=plugins,
     )
-    
-    trainer.logger._default_hp_metric = (
-        None
-    )
+
+    trainer.logger._default_hp_metric = None
 
     pl.seed_everything(42)
-    model = TrainingModule(samples_per_epoch=len(train_loader), tokenizer=tokenizer, clip_processor=clip_processor, **kwargs)
-
-    wandb.run.summary["total_params"] = sum(p.numel() for p in model.parameters())
-    wandb.run.summary["trainable_params"] = sum(
-        p.numel() for p in model.parameters() if p.requires_grad
+    model = TrainingModule(
+        samples_per_epoch=len(train_loader),
+        tokenizer=tokenizer,
+        clip_processor=clip_processor,
+        **kwargs,
     )
+
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total_params = sum(p.numel() for p in model.parameters())
+    wandb.run.summary["total_params"] = total_params
+    wandb.run.summary["trainable_params"] = trainable_params
+
+    model.log("trainable_params", trainable_params)
+    model.log("total_params", total_params)
 
     if find_lr:
         print("using lr finder")
@@ -479,6 +496,7 @@ def main():
     parser.add_argument("--use_unpooled_output", action="store_true")
     parser.add_argument("--arch", default="mlp", choices=["mlp", "clipcap", "flan-t5"])
     parser.add_argument("--eval_batches", type=int, default=4)
+    parser.add_argument("--mlp_dropout", type=float, default=0.2)
 
     args = parser.parse_args()
 
@@ -504,6 +522,7 @@ def main():
         use_unpooled_output=args.use_unpooled_output,
         arch=args.arch,
         eval_batches=args.eval_batches,
+        mlp_dropout=args.mlp_dropout,
     )
 
 

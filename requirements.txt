@@ -3,4 +3,5 @@ lightning
 transformers
 pycocotools
 wandb
+sentencepiece
 git+https://github.com/salaniz/pycocoevalcap.git
