@@ -30,10 +30,14 @@ echo "unzipping data..."
 
 echo "starting training..."
 
-# srun python train.py --annotations_file $TMPDIR/data/annotations/captions_train2014.json --data_dir $TMPDIR/data/train2014 --val_annotations_file $TMPDIR/data/annotations/captions_val2014.json --val_data_dir $TMPDIR/data/val2014 --mlp_hidden_size 256 --batch_size 8 --warmup 1 --run_name mlp_small
-srun python train.py --annotations_file $TMPDIR/data/annotations/captions_train2014.json --data_dir $TMPDIR/data/train2014 --val_annotations_file $TMPDIR/data/annotations/captions_val2014.json --val_data_dir $TMPDIR/data/val2014 --mlp_hidden_size 4096 --batch_size 8 --warmup 1 --run_name mlp_big
-# srun python train.py --annotations_file $TMPDIR/data/annotations/captions_train2014.json --data_dir $TMPDIR/data/train2014 --val_annotations_file $TMPDIR/data/annotations/captions_val2014.json --val_data_dir $TMPDIR/data/val2014 --mlp_hidden_size 256 --batch_size 8 --warmup 1 --use_unpooled_output --run_name rich
-# srun python train.py --annotations_file $TMPDIR/data/annotations/captions_train2014.json --data_dir $TMPDIR/data/train2014 --val_annotations_file $TMPDIR/data/annotations/captions_val2014.json --val_data_dir $TMPDIR/data/val2014 --mlp_hidden_size 256 --batch_size 8 --warmup 1 --arch clipcap --run_name clipcap_transformer
-# srun python train.py --annotations_file $TMPDIR/data/annotations/captions_train2014.json --data_dir $TMPDIR/data/train2014 --val_annotations_file $TMPDIR/data/annotations/captions_val2014.json --val_data_dir $TMPDIR/data/val2014 --mlp_hidden_size 256 --batch_size 8 --warmup 1 --use_unpooled_output --arch clipcap --run_name clipcap_t_rich
+shared_part="srun python train.py --annotations_file $TMPDIR/data/annotations/captions_train2014.json --data_dir $TMPDIR/data/train2014 --val_annotations_file $TMPDIR/data/annotations/captions_val2014.json --val_data_dir $TMPDIR/data/val2014"
+
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --run_name mlp_small
+$shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --mlp_dropout 0.6 --run_name mlp_small_high_dropout
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --finetune_lm --run_name mlp_small_finetuned
+# $shared_part --mlp_hidden_size 4096 --batch_size 8 --warmup 1 --run_name mlp_big
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --use_unpooled_output --run_name rich
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --arch clipcap --run_name clipcap_transformer
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --use_unpooled_output --arch clipcap --run_name clipcap_t_rich
 
 
