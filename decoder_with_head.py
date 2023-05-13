@@ -6,8 +6,9 @@ from transformers.utils.import_utils import is_torch_fx_proxy
 
 
 class DecoderWithHead(nn.Module):
-    def __init__(self, decoder, lm_head):
+    def __init__(self, shared, decoder, lm_head):
         super(DecoderWithHead, self).__init__()
+        self.shared = shared
         self.decoder = decoder
         self.lm_head = lm_head
 
@@ -43,6 +44,9 @@ class DecoderWithHead(nn.Module):
         shifted_input_ids.masked_fill_(shifted_input_ids == -100, pad_token_id)
 
         return shifted_input_ids
+
+    def get_input_embeddings(self):
+        return self.shared
 
     def forward(
         self,

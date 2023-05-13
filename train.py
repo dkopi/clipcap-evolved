@@ -161,19 +161,18 @@ class CaptioningModel(nn.Module):
             # TODO: Load only the decoder weights
             self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
             self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
-            self.lm = DecoderWithHead(self.lm.decoder, self.lm.lm_head)
-
+            self.lm = DecoderWithHead(self.lm.shared, self.lm.decoder, self.lm.lm_head)
             self.mapper = MLP(
                 self.visual_output_size,
                 mlp_hidden_size,
-                mlp_hidden_size * prefix_length,  # self.visual_output_size,
+                self.lm_embedding_size * prefix_length,  # self.visual_output_size,
             )
 
         else:
             raise ValueError(f"Unknown architecture: {architecture}")
 
     def token_to_embed(self, tokens: torch.Tensor):
-        if self.architecture == "flan-t5":
+        if self.architecture == "flan-t5" or self.architecture == "flan-mlp":
             return self.lm.get_input_embeddings()(tokens)
         else:
             return self.lm.transformer.wte(tokens)
@@ -181,7 +180,7 @@ class CaptioningModel(nn.Module):
     def get_logits(
         self, image_embeds: torch.Tensor, encoder_outputs: Optional[torch.tensor] = None
     ):
-        if self.architecture == "flan-t5":
+        if self.architecture == "flan-t5" or self.architecture == "flan-mlp":
             # Get the logits of the next token when using flan-t5
             return self.lm(
                 inputs_embeds=image_embeds, decoder_inputs_embeds=encoder_outputs
