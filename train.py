@@ -447,6 +447,7 @@ def train_model(
         log_every_n_steps=10,
         val_check_interval=1000,
         plugins=plugins,
+        gradient_clip_val=kwargs["grad_clip"],
     )
 
     trainer.logger._default_hp_metric = None
@@ -513,6 +514,7 @@ def main():
     parser.add_argument("--arch", default="mlp", choices=["mlp", "clipcap", "flan-t5"])
     parser.add_argument("--eval_batches", type=int, default=4)
     parser.add_argument("--mlp_dropout", type=float, default=0.2)
+    parser.add_argument("--grad_clip", type=float, default=None)
 
     args = parser.parse_args()
 
@@ -539,6 +541,7 @@ def main():
         arch=args.arch,
         eval_batches=args.eval_batches,
         mlp_dropout=args.mlp_dropout,
+        grad_clip=args.grad_clip,
     )
 
 
