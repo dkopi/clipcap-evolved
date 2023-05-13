@@ -47,15 +47,11 @@ class LoRACaptioningModel(nn.Module):
 
         self.clip = CLIPModel.from_pretrained(clip_pretrained_model)
 
-        #gpt_base_model = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
-        #lora_model = get_peft_model(gpt_base_model, lora_config)
-
 
         #print(lora_model.print_trainable_parameters())
 
         #self.gpt = lora_model
-        self.gpt = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
-        #self.gpt = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
+        self.gpt = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model, load_in_8bit=True)
         self.gpt_embedding_size = self.gpt.transformer.wte.weight.shape[1]
 
         if architecture == "mlp":
@@ -80,7 +76,7 @@ class LoRACaptioningModel(nn.Module):
             param.requires_grad = False
 
         lora_config = LoraConfig(peft_type="LORA", task_type="CAUSAL_LM",
-                            r=8,
+                            r=4,
                             lora_alpha=32,
                             target_modules=["c_attn"],
                             lora_dropout=0.01,
