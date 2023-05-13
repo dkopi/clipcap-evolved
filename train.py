@@ -28,6 +28,7 @@ from pycocotools.coco import COCO
 import wandb
 import numpy as np
 from clipcap_transformer import ClipCapTransformerMapper
+from decoder_with_head import DecoderWithHead
 from evaluate import generate, evaluate
 
 
@@ -156,6 +157,17 @@ class CaptioningModel(nn.Module):
                 mlp_hidden_size,
                 self.lm_embedding_size * prefix_length,
             )
+        elif architecture == "flan-mlp":
+            # TODO: Load only the decoder weights
+            self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
+            self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
+            self.lm = DecoderWithHead(self.lm.decoder, self.lm.lm_head)
+
+            self.mapper = MLP(
+                self.visual_output_size,
+                mlp_hidden_size,
+                mlp_hidden_size * prefix_length,  # self.visual_output_size,
+            )
 
         else:
             raise ValueError(f"Unknown architecture: {architecture}")
@@ -198,7 +210,7 @@ class CaptioningModel(nn.Module):
     ):
         image_embeds = self.get_image_embeds(images)
 
-        if self.architecture == "flan-t5":
+        if self.architecture == "flan-t5" or self.architecture == "flan-mlp":
             out = self.lm(inputs_embeds=image_embeds, labels=tokens)
         elif (
             self.architecture == "clipcap" or self.architecture == "mlp"
@@ -299,7 +311,7 @@ class TrainingModule(pl.LightningModule):
             with torch.no_grad():
                 output = self(tokens, images, mask)
 
-        if self.hparams.arch == "flan-t5":
+        if self.hparams.arch == "flan-t5" or self.hparams.arch == "flan-mlp":
             loss = self.loss_module(
                 output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten()
             )  # TODO: Do we use our loss or loss from the T5?
@@ -395,7 +407,7 @@ def train_model(
 
     if kwargs["arch"] == "mlp" or kwargs["arch"] == "clipcap":
         tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    elif kwargs["arch"] == "flan-t5":
+    elif kwargs["arch"] == "flan-t5" or kwargs["arch"] == "flan-mlp":
         tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-small")
 
     clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")

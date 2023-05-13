@@ -55,7 +55,7 @@ def generate(
     stop_token_index = tokenizer.encode(stop_token)[0]
     filter_value = -float("Inf")
     generated = embed  # TODO: Conditional image "embed"s to encoder input, decoder to special token according to docs
-    if arch == "flan-t5":
+    if arch == "flan-t5" or arch == "flan-mlp":
         encoder_input = embed
         pad_id = tokenizer("<pad>", return_tensors="pt").input_ids.to(embed.device)
         generated = model.token_to_embed(pad_id)
@@ -64,7 +64,7 @@ def generate(
 
     with torch.no_grad():
         for i in range(entry_length):
-            if arch == "flan-t5":
+            if arch == "flan-t5" or arch == "flan-mlp":
                 logits = model.get_logits(encoder_input, generated)
             else:
                 logits = model.get_logits(generated)
