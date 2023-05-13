@@ -509,7 +509,7 @@ def main():
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--use_unpooled_output", action="store_true")
     parser.add_argument("--arch", default="mlp", choices=["mlp", "clipcap", "flan-t5"])
-    parser.add_argument("--eval_batches", type=int, default=4)
+    parser.add_argument("--eval_batches", type=int, default=16)
     parser.add_argument("--mlp_dropout", type=float, default=0.2)
     parser.add_argument("--grad_clip", type=float, default=None)
     parser.add_argument("--finetune_lm", action="store_true")
