@@ -162,13 +162,18 @@ class CaptioningModel(nn.Module):
 
     def token_to_embed(self, tokens: torch.Tensor):
         if self.architecture == "flan-t5":
-            raise NotImplementedError()
+            return self.lm.get_input_embeddings()(tokens)
         else:
             return self.lm.transformer.wte(tokens)
 
-    def get_logits(self, image_embeds: torch.Tensor):
+    def get_logits(
+        self, image_embeds: torch.Tensor, encoder_outputs: Optional[torch.tensor] = None
+    ):
         if self.architecture == "flan-t5":
-            raise NotImplementedError()
+            # Get the logits of the next token when using flan-t5
+            return self.lm(
+                inputs_embeds=image_embeds, decoder_inputs_embeds=encoder_outputs
+            ).logits
         else:
             return self.lm(inputs_embeds=image_embeds).logits
 
@@ -323,11 +328,22 @@ class TrainingModule(pl.LightningModule):
             to_caption = images[:1]
             with torch.no_grad():
                 image_embeds = self.model.get_image_embeds(to_caption)
-                caption = generate(self.model, self.hparams.tokenizer, image_embeds)
+                caption = generate(
+                    self.model,
+                    self.hparams.tokenizer,
+                    image_embeds,
+                    arch=self.hparams.arch,
+                )
                 print(f"caption: {caption}")
 
         if batch_idx < self.hparams.eval_batches:
-            scores = evaluate(self.model, self.hparams.tokenizer, images, tokens)
+            scores = evaluate(
+                self.model,
+                self.hparams.tokenizer,
+                images,
+                tokens,
+                arch=self.hparams.arch,
+            )
             self.log("cider", scores["cider"], prog_bar=True)
 
         loss = self.get_loss(tokens, images, mask, requires_grad=False)
@@ -437,6 +453,7 @@ def train_model(
         log_every_n_steps=10,
         val_check_interval=kwargs["val_freq"],
         plugins=plugins,
+        gradient_clip_val=kwargs["grad_clip"],
     )
 
     trainer.logger._default_hp_metric = None
@@ -492,8 +509,9 @@ def main():
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--use_unpooled_output", action="store_true")
     parser.add_argument("--arch", default="mlp", choices=["mlp", "clipcap", "flan-t5"])
-    parser.add_argument("--eval_batches", type=int, default=4)
+    parser.add_argument("--eval_batches", type=int, default=16)
     parser.add_argument("--mlp_dropout", type=float, default=0.2)
+    parser.add_argument("--grad_clip", type=float, default=None)
     parser.add_argument("--finetune_lm", action="store_true")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--val_freq", type=int, default=1000)
