@@ -29,6 +29,7 @@ import wandb
 import numpy as np
 from clipcap_transformer import ClipCapTransformerMapper
 from evaluate import generate, evaluate
+from peft import LoraConfig, get_peft_model
 
 
 class COCODataset(Dataset):
@@ -245,6 +246,9 @@ class TrainingModule(pl.LightningModule):
         self.freeze_target(self.model.clip)
         if not kwargs["finetune_lm"]:
             self.freeze_target(self.model.lm)
+            if kwargs["train_with_lora"]:
+                self.model.lm = self.get_lora_model(self.model.lm, arch)
+
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
         self.clip_processor = CLIPProcessor.from_pretrained(
             "openai/clip-vit-base-patch32"
@@ -259,6 +263,31 @@ class TrainingModule(pl.LightningModule):
             param.requires_grad = False
 
         target.eval()
+    def get_lora_model(self, model, arch, lora_config = None):
+
+        if not lora_config:
+            if arch == "flan-t5":
+                target_modules = ["q", "v"]
+            elif arch == "clipcap":
+                target_modules = ["c_attn"]
+            elif arch == "mlp":
+                target_modules = ["c_attn"]
+            else:
+                raise ValueError(f"Unknown architecture: {arch}")
+
+            lora_config = LoraConfig(peft_type="LORA", task_type="CAUSAL_LM",
+                                     r=4,
+                                     lora_alpha=32,
+                                     target_modules=target_modules,
+                                     lora_dropout=0.01,
+                                     fan_in_fan_out=True,
+                                     )
+
+        lora_model = get_peft_model(model, lora_config)
+        print("h1")
+        lora_model.print_trainable_parameters()
+        return lora_model
+
 
     def forward(
         self,
@@ -515,6 +544,8 @@ def main():
     parser.add_argument("--finetune_lm", action="store_true")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--val_freq", type=int, default=1000)
+    parser.add_argument("--train_with_lora", action="store_true")
+
 
     args = parser.parse_args()
 
