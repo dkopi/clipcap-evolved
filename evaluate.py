@@ -49,7 +49,7 @@ def generate(
     top_p=0.8,  # do we use top_p or temperature?
     temperature=1.0,
     stop_token: str = ".",
-    arch: str = "mlp",
+    arch: str = "mlp", # use 'lm_model'
 ):
     model.eval()
     stop_token_index = tokenizer.encode(stop_token)[0]

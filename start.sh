@@ -31,14 +31,19 @@ echo "starting training..."
 
 shared_part="srun python train.py --annotations_file $TMPDIR/data/annotations/captions_train2014.json --data_dir $TMPDIR/data/train2014 --val_annotations_file $TMPDIR/data/annotations/captions_val2014.json --val_data_dir $TMPDIR/data/val2014"
 
+# $shared_part --batch_size 8 --lr 2e-5 --direct --run_name gpt_direct
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --direct --arch flan-t5 --run_name flant5_direct
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --grad_clip 2.0 --direct --finetune_lm --arch flan-t5 --run_name flant5_finetuned_direct_gc2
+
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --run_name mlp_small
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --mlp_dropout 0.6 --run_name mlp_small_high_dropout
-# $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --finetune_lm --run_name mlp_small_finetuned
+$shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --finetune_lm --run_name mlp_small_finetuned
 # $shared_part --mlp_hidden_size 4096 --batch_size 8 --warmup 1 --run_name mlp_big
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --use_unpooled_output --run_name rich
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --arch clipcap --run_name clipcap_transformer
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --use_unpooled_output --arch clipcap --run_name clipcap_t_rich
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --run_name mlp_small
 
-$shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --grad_clip 100.0 --arch flan-t5 --run_name flant5_gradclip
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --grad_clip 2.0 --arch flan-t5 --run_name flant5_gc2
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --grad_clip 10.0 --finetune_lm --arch flan-t5 --run_name flant5_gc10_ft
 
