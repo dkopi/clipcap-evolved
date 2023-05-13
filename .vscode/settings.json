@@ -1,0 +1,11 @@
+{
+  "editor.formatOnPaste": false,
+  "editor.tabSize": 4,
+  "editor.insertSpaces": true,
+  "editor.detectIndentation": true,
+  "python.formatting.provider": "black",
+  "[python]": {
+    "editor.tabSize": 4,
+    "editor.formatOnSave": true
+  }
+}
