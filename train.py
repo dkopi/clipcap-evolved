@@ -160,17 +160,6 @@ class CaptioningModel(nn.Module):
         else:
             raise ValueError(f"Unknown architecture: {architecture}")
 
-        # todo: indicate in the docs that by default these parts are frozen and put to eval mode
-        self.clip.eval()
-        self.lm.eval()
-        for param in self.clip.parameters():
-            param.requires_grad = False
-        for param in self.lm.parameters():
-            param.requires_grad = False
-
-    # def parameters(self, recurse: bool = True):
-    #     return self.mapper.parameters()
-
     def token_to_embed(self, tokens: torch.Tensor):
         if self.architecture == "flan-t5":
             return self.lm.get_input_embeddings()(tokens)
@@ -223,7 +212,6 @@ class CaptioningModel(nn.Module):
         return out
 
 
-# todo: use it
 class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, warmup, max_iters):
         self.warmup = warmup
@@ -254,10 +242,23 @@ class TrainingModule(pl.LightningModule):
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
         )
+        self.freeze_target(self.model.clip)
+        if not kwargs["finetune_lm"]:
+            self.freeze_target(self.model.lm)
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
         self.clip_processor = CLIPProcessor.from_pretrained(
             "openai/clip-vit-base-patch32"
         )
+        self.trainable_params = sum(
+            p.numel() for p in self.model.parameters() if p.requires_grad
+        )
+        self.total_params = sum(p.numel() for p in self.model.parameters())
+
+    def freeze_target(self, target):
+        for param in target.parameters():
+            param.requires_grad = False
+
+        target.eval()
 
     def forward(
         self,
@@ -314,9 +315,9 @@ class TrainingModule(pl.LightningModule):
         loss = self.get_loss(tokens, images, mask)
 
         self.log(
-            "grad_norm", self._gradient_norm(self.model), on_step=True, on_epoch=True
+            "grad_norm", self._gradient_norm(self.model), on_step=True, on_epoch=False
         )
-        self.log("train_loss", loss, on_step=True, on_epoch=True)
+        self.log("train_loss", loss, on_step=True, on_epoch=False)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -348,6 +349,8 @@ class TrainingModule(pl.LightningModule):
         loss = self.get_loss(tokens, images, mask, requires_grad=False)
 
         self.log("val_loss", loss, prog_bar=True)
+        self.log("trainable_params", float(self.trainable_params))
+        self.log("total_params", float(self.total_params))
 
 
 def train_model(
@@ -358,6 +361,8 @@ def train_model(
     find_lr=False,
     **kwargs,
 ):
+    pl.seed_everything(42)
+
     data_dir = kwargs["data_dir"]
     val_data_dir = kwargs["val_data_dir"]
     annotations_file = kwargs["annotations_file"]
@@ -375,6 +380,7 @@ def train_model(
         id=run_id,
         resume="allow",
         log_model=False,
+        offline=kwargs["offline"],
     )
     os.makedirs(checkpoint_path, exist_ok=True)
     with open(os.path.join(checkpoint_path, "last_run_id"), "w") as f:
@@ -445,35 +451,26 @@ def train_model(
         enable_progress_bar=True,
         logger=wandb_logger,
         log_every_n_steps=10,
-        val_check_interval=1000,
+        val_check_interval=kwargs["val_freq"],
         plugins=plugins,
         gradient_clip_val=kwargs["grad_clip"],
     )
 
     trainer.logger._default_hp_metric = None
 
-    pl.seed_everything(42)
-    model = TrainingModule(
+    training_module = TrainingModule(
         samples_per_epoch=len(train_loader),
         tokenizer=tokenizer,
         clip_processor=clip_processor,
         **kwargs,
     )
 
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    total_params = sum(p.numel() for p in model.parameters())
-    wandb.run.summary["total_params"] = total_params
-    wandb.run.summary["trainable_params"] = trainable_params
-
-    model.log("trainable_params", trainable_params)
-    model.log("total_params", total_params)
-
     if find_lr:
         print("using lr finder")
         tuner = Tuner(trainer)
-        tuner.lr_find(model, train_loader, val_loader)
+        tuner.lr_find(training_module, train_loader, val_loader)
 
-    trainer.fit(model, train_loader, val_loader)
+    trainer.fit(training_module, train_loader, val_loader)
 
     # model = CIFARModule.load_from_checkpoint(
     #     trainer.checkpoint_callback.best_model_path
@@ -486,7 +483,7 @@ def train_model(
 
     wandb.finish()
 
-    return model
+    return training_module
 
 
 def main():
@@ -515,6 +512,9 @@ def main():
     parser.add_argument("--eval_batches", type=int, default=4)
     parser.add_argument("--mlp_dropout", type=float, default=0.2)
     parser.add_argument("--grad_clip", type=float, default=None)
+    parser.add_argument("--finetune_lm", action="store_true")
+    parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--val_freq", type=int, default=1000)
 
     args = parser.parse_args()
 
@@ -523,26 +523,7 @@ def main():
         print(f"{k}: {v}")
     print("====================")
 
-    train_model(
-        annotations_file=args.annotations_file,
-        data_dir=args.data_dir,
-        val_annotations_file=args.val_annotations_file,
-        val_data_dir=args.val_data_dir,
-        checkpoint_path=args.checkpoint_path,
-        epochs=args.epochs,
-        prefix_length=args.prefix_length,
-        batch_size=args.batch_size,
-        mlp_hidden_size=args.mlp_hidden_size,
-        lr=args.lr,
-        find_lr=args.find_lr,
-        run_name=args.run_name,
-        warmup=args.warmup,
-        use_unpooled_output=args.use_unpooled_output,
-        arch=args.arch,
-        eval_batches=args.eval_batches,
-        mlp_dropout=args.mlp_dropout,
-        grad_clip=args.grad_clip,
-    )
+    train_model(**vars(args))
 
 
 if __name__ == "__main__":
