@@ -180,10 +180,14 @@ class CaptioningModel(nn.Module):
     def get_logits(
         self, image_embeds: torch.Tensor, encoder_outputs: Optional[torch.tensor] = None
     ):
-        if self.architecture == "flan-t5" or self.architecture == "flan-mlp":
+        if self.architecture == "flan-t5":
             # Get the logits of the next token when using flan-t5
             return self.lm(
                 inputs_embeds=image_embeds, decoder_inputs_embeds=encoder_outputs
+            ).logits
+        elif self.architecture == "flan-mlp":
+            return self.lm(
+                hidden_states=image_embeds, decoder_inputs_embeds=encoder_outputs
             ).logits
         else:
             return self.lm(inputs_embeds=image_embeds).logits
@@ -209,7 +213,7 @@ class CaptioningModel(nn.Module):
     ):
         image_embeds = self.get_image_embeds(images)
 
-        if self.architecture == "flan-t5" or self.architecture == "flan-mlp":
+        if self.architecture == "flan-t5":
             out = self.lm(inputs_embeds=image_embeds, labels=tokens)
         elif (
             self.architecture == "clipcap" or self.architecture == "mlp"
@@ -217,6 +221,8 @@ class CaptioningModel(nn.Module):
             embedding_text = self.lm.transformer.wte(tokens)
             embedding_cat = torch.cat((image_embeds, embedding_text), dim=1)
             out = self.lm(inputs_embeds=embedding_cat, attention_mask=mask)
+        elif self.architecture == "flan-mlp":
+            out = self.lm(hidden_states=image_embeds, labels=tokens)
         else:
             raise ValueError(f"Unknown architecture: {self.architecture}")
 
