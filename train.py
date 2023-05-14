@@ -167,12 +167,23 @@ class CaptioningModel(nn.Module):
                 mlp_hidden_size,
                 self.lm_embedding_size * prefix_length,  # self.visual_output_size,
             )
-
+        elif architecture == "flan-transformer":
+            # TODO: Load only the decoder weights
+            self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
+            self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
+            self.lm = DecoderWithHead(self.lm.shared, self.lm.decoder, self.lm.lm_head)
+            self.mapper = ClipCapTransformerMapper(
+                self.visual_output_size, self.lm_embedding_size, prefix_length, 10, 8
+            )
         else:
             raise ValueError(f"Unknown architecture: {architecture}")
 
     def token_to_embed(self, tokens: torch.Tensor):
-        if self.architecture == "flan-t5" or self.architecture == "flan-mlp":
+        if (
+            self.architecture == "flan-t5"
+            or self.architecture == "flan-mlp"
+            or self.architecture == "flan-transformer"
+        ):
             return self.lm.get_input_embeddings()(tokens)
         else:
             return self.lm.transformer.wte(tokens)
@@ -185,7 +196,7 @@ class CaptioningModel(nn.Module):
             return self.lm(
                 inputs_embeds=image_embeds, decoder_inputs_embeds=encoder_outputs
             ).logits
-        elif self.architecture == "flan-mlp":
+        elif self.architecture == "flan-mlp" or self.architecture == "flan-transformer":
             return self.lm(
                 hidden_states=image_embeds, decoder_inputs_embeds=encoder_outputs
             ).logits
@@ -221,7 +232,7 @@ class CaptioningModel(nn.Module):
             embedding_text = self.lm.transformer.wte(tokens)
             embedding_cat = torch.cat((image_embeds, embedding_text), dim=1)
             out = self.lm(inputs_embeds=embedding_cat, attention_mask=mask)
-        elif self.architecture == "flan-mlp":
+        elif self.architecture == "flan-mlp" or self.architecture == "flan-transformer":
             out = self.lm(hidden_states=image_embeds, labels=tokens)
         else:
             raise ValueError(f"Unknown architecture: {self.architecture}")
@@ -316,7 +327,11 @@ class TrainingModule(pl.LightningModule):
             with torch.no_grad():
                 output = self(tokens, images, mask)
 
-        if self.hparams.arch == "flan-t5" or self.hparams.arch == "flan-mlp":
+        if (
+            self.hparams.arch == "flan-t5"
+            or self.hparams.arch == "flan-mlp"
+            or self.hparams.arch == "flan-transformer"
+        ):
             loss = self.loss_module(
                 output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten()
             )  # TODO: Do we use our loss or loss from the T5?
@@ -412,7 +427,11 @@ def train_model(
 
     if kwargs["arch"] == "mlp" or kwargs["arch"] == "clipcap":
         tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    elif kwargs["arch"] == "flan-t5" or kwargs["arch"] == "flan-mlp":
+    elif (
+        kwargs["arch"] == "flan-t5"
+        or kwargs["arch"] == "flan-mlp"
+        or kwargs["arch"] == "flan-transformer"
+    ):
         tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-small")
 
     clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
@@ -526,7 +545,9 @@ def main():
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--use_unpooled_output", action="store_true")
     parser.add_argument(
-        "--arch", default="mlp", choices=["mlp", "clipcap", "flan-t5", "flan-mlp"]
+        "--arch",
+        default="mlp",
+        choices=["mlp", "clipcap", "flan-t5", "flan-mlp", "flan-transformer"],
     )
     parser.add_argument("--eval_batches", type=int, default=16)
     parser.add_argument("--mlp_dropout", type=float, default=0.2)
