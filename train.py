@@ -134,7 +134,7 @@ class CaptioningModel(nn.Module):
         else:
             self.visual_output_size = visual_output_size
         self.direct = direct
-        self.clip = CLIPModel.from_pretrained(clip_pretrained_model)
+        self.clip = CLIPModel.from_pretrained(clip_pretrained_model).vision_model
 
         if architecture == "mlp":  # split, based on head and used mapper
             self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
@@ -172,20 +172,24 @@ class CaptioningModel(nn.Module):
             self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
             self.lm = DecoderWithHead(self.lm.shared, self.lm.decoder, self.lm.lm_head)
             if not self.direct:
-              self.mapper = MLP(
-                  self.visual_output_size,
-                  mlp_hidden_size,
-                  self.lm_embedding_size * prefix_length,
-              )
+                self.mapper = MLP(
+                    self.visual_output_size,
+                    mlp_hidden_size,
+                    self.lm_embedding_size * prefix_length,
+                )
         elif architecture == "flan-transformer":
             # TODO: Load only the decoder weights
             self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
             self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
             self.lm = DecoderWithHead(self.lm.shared, self.lm.decoder, self.lm.lm_head)
             if not self.direct:
-              self.mapper = ClipCapTransformerMapper(
-                  self.visual_output_size, self.lm_embedding_size, prefix_length, 10, 8
-              )
+                self.mapper = ClipCapTransformerMapper(
+                    self.visual_output_size,
+                    self.lm_embedding_size,
+                    prefix_length,
+                    10,
+                    8,
+                )
         else:
             raise ValueError(f"Unknown architecture: {architecture}")
 
@@ -216,14 +220,12 @@ class CaptioningModel(nn.Module):
 
     def get_image_embeds(self, images: torch.Tensor):
         if self.direct:
-            clip_embeds = self.clip.vision_model(images)["last_hidden_state"]
+            clip_embeds = self.clip(images)["last_hidden_state"]
             return clip_embeds
         elif self.use_unpooled_output:
-            clip_embeds = self.clip.vision_model(images)["last_hidden_state"].flatten(
-                start_dim=-2
-            )
+            clip_embeds = self.clip(images)["last_hidden_state"].flatten(start_dim=-2)
         else:
-            clip_embeds = self.clip.vision_model(images)["pooler_output"]
+            clip_embeds = self.clip(images)["pooler_output"]
         return self.mapper(clip_embeds).view(
             -1, self.prefix_length, self.lm_embedding_size
         )
@@ -287,7 +289,10 @@ class TrainingModule(pl.LightningModule):
         )
         self.freeze_target(self.model.clip)
         if not kwargs["finetune_lm"]:
-            self.freeze_target(self.model.lm)
+            if self.hparams.arch == "flan-t5":
+                self.freeze_target(self.model.lm.encoder)
+            else:
+                self.freeze_target(self.model.lm)
             if kwargs["lora"]:
                 self.model.lm = self.get_lora_model(self.model.lm, arch)
 
@@ -310,10 +315,8 @@ class TrainingModule(pl.LightningModule):
         if not lora_config:
             if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
                 target_modules = ["q", "v"]
-            elif arch == "clipcap":
-                target_modules = ["c_attn"]
-            elif arch == "mlp":
-                target_modules = ["c_attn"]
+            elif arch == "clipcap" or arch == "mlp":
+                target_modules = ["c_attn", "c_proj", "c_fc", "lm_head"]
             else:
                 raise ValueError(f"Unknown architecture: {arch}")
 
@@ -500,14 +503,14 @@ def train_model(
         batch_size=batch_size,
         shuffle=True,
         drop_last=True,
-        # pin_memory=True,
-        # num_workers=16,
+        pin_memory=True,
+        num_workers=16,
     )
     val_loader = DataLoader(
         val_set,
         batch_size=batch_size,
         drop_last=False,
-        # num_workers=16,
+        num_workers=16,
     )
 
     plugins = []
