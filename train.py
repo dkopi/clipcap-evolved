@@ -28,6 +28,7 @@ from pycocotools.coco import COCO
 import wandb
 import numpy as np
 from clipcap_transformer import ClipCapTransformerMapper
+from decoder_with_head import DecoderWithHead
 from evaluate import generate, evaluate
 from peft import LoraConfig, get_peft_model
 
@@ -165,12 +166,35 @@ class CaptioningModel(nn.Module):
                     mlp_hidden_size,
                     self.lm_embedding_size * prefix_length,
                 )
-
+        elif architecture == "flan-mlp":
+            # TODO: Load only the decoder weights
+            self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
+            self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
+            self.lm = DecoderWithHead(self.lm.shared, self.lm.decoder, self.lm.lm_head)
+            if not self.direct:
+              self.mapper = MLP(
+                  self.visual_output_size,
+                  mlp_hidden_size,
+                  self.lm_embedding_size * prefix_length,
+              )
+        elif architecture == "flan-transformer":
+            # TODO: Load only the decoder weights
+            self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
+            self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
+            self.lm = DecoderWithHead(self.lm.shared, self.lm.decoder, self.lm.lm_head)
+            if not self.direct:
+              self.mapper = ClipCapTransformerMapper(
+                  self.visual_output_size, self.lm_embedding_size, prefix_length, 10, 8
+              )
         else:
             raise ValueError(f"Unknown architecture: {architecture}")
 
     def token_to_embed(self, tokens: torch.Tensor):
-        if self.architecture == "flan-t5":
+        if (
+            self.architecture == "flan-t5"
+            or self.architecture == "flan-mlp"
+            or self.architecture == "flan-transformer"
+        ):
             return self.lm.get_input_embeddings()(tokens)
         else:
             return self.lm.transformer.wte(tokens)
@@ -182,6 +206,10 @@ class CaptioningModel(nn.Module):
             # Get the logits of the next token when using flan-t5
             return self.lm(
                 inputs_embeds=image_embeds, decoder_inputs_embeds=encoder_outputs
+            ).logits
+        elif self.architecture == "flan-mlp" or self.architecture == "flan-transformer":
+            return self.lm(
+                hidden_states=image_embeds, decoder_inputs_embeds=encoder_outputs
             ).logits
         else:
             return self.lm(inputs_embeds=image_embeds).logits
@@ -216,6 +244,8 @@ class CaptioningModel(nn.Module):
             embedding_text = self.lm.transformer.wte(tokens)
             embedding_cat = torch.cat((image_embeds, embedding_text), dim=1)
             out = self.lm(inputs_embeds=embedding_cat, attention_mask=mask)
+        elif self.architecture == "flan-mlp" or self.architecture == "flan-transformer":
+            out = self.lm(hidden_states=image_embeds, labels=tokens)
         else:
             raise ValueError(f"Unknown architecture: {self.architecture}")
 
@@ -249,6 +279,8 @@ class TrainingModule(pl.LightningModule):
             kwargs["direct"],
             prefix_length,
             mlp_hidden_size,
+            gpt2_pretrained_model="gpt2" + kwargs["gpt_size"],
+            flan_pretrained_model="google/flan-t5-" + kwargs["flan_size"],
             use_unpooled_output=use_unpooled_output,
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
@@ -276,7 +308,7 @@ class TrainingModule(pl.LightningModule):
 
     def get_lora_model(self, model, arch, lora_config=None):
         if not lora_config:
-            if arch == "flan-t5":
+            if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
                 target_modules = ["q", "v"]
             elif arch == "clipcap":
                 target_modules = ["c_attn"]
@@ -335,7 +367,11 @@ class TrainingModule(pl.LightningModule):
     def get_loss(self, tokens, images, mask):
         output = self(tokens, images, mask)
 
-        if self.hparams.arch == "flan-t5":
+        if (
+            self.hparams.arch == "flan-t5"
+            or self.hparams.arch == "flan-mlp"
+            or self.hparams.arch == "flan-transformer"
+        ):
             loss = self.loss_module(
                 output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten()
             )  # TODO: Do we use our loss or loss from the T5?
@@ -432,10 +468,15 @@ def train_model(
     else:
         device = torch.device("cpu")
 
-    if kwargs["arch"] == "mlp" or kwargs["arch"] == "clipcap":  # lm_model
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    elif kwargs["arch"] == "flan-t5":
-        tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-base")
+    kwargs["gpt_size"] = "-" + kwargs["gpt_size"] if kwargs["gpt_size"] != "" else ""
+    if kwargs["arch"] == "mlp" or kwargs["arch"] == "clipcap":
+        tokenizer = GPT2Tokenizer.from_pretrained("gpt2" + kwargs["gpt_size"])
+    elif (
+        kwargs["arch"] == "flan-t5"
+        or kwargs["arch"] == "flan-mlp"
+        or kwargs["arch"] == "flan-transformer"
+    ):
+        tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-" + kwargs["flan_size"])
 
     clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
@@ -551,7 +592,15 @@ def main():
     parser.add_argument("--run_name", default=None)
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--use_unpooled_output", action="store_true")
-    parser.add_argument("--arch", default="mlp", choices=["mlp", "clipcap", "flan-t5"])
+    parser.add_argument(
+        "--arch",
+        default="mlp",
+        choices=["mlp", "clipcap", "flan-t5", "flan-mlp", "flan-transformer"],
+    )
+    parser.add_argument(
+        "--flan_size", default="small", choices=["small", "base", "large", "xl", "xxl"]
+    )
+    parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
     parser.add_argument("--eval_batches", type=int, default=16)
     parser.add_argument("--mlp_dropout", type=float, default=0.0)
     parser.add_argument("--grad_clip", type=float, default=None)
