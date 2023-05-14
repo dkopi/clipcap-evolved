@@ -30,6 +30,7 @@ import numpy as np
 from clipcap_transformer import ClipCapTransformerMapper
 from decoder_with_head import DecoderWithHead
 from evaluate import generate, evaluate
+from peft import LoraConfig, get_peft_model
 
 
 class COCODataset(Dataset):
@@ -112,11 +113,12 @@ class MLP(nn.Module):
 class CaptioningModel(nn.Module):
     def __init__(
         self,
+        direct,
         prefix_length: int = 8,
         mlp_hidden_size: int = 64,
         visual_output_size: int = 768,
         gpt2_pretrained_model="gpt2",
-        flan_pretrained_model="google/flan-t5-small",
+        flan_pretrained_model="google/flan-t5-base",
         clip_pretrained_model="openai/clip-vit-base-patch32",
         use_unpooled_output: bool = False,
         architecture: str = "mlp",
@@ -131,50 +133,59 @@ class CaptioningModel(nn.Module):
             self.visual_output_size = visual_output_size * 50
         else:
             self.visual_output_size = visual_output_size
-
+        self.direct = direct
         self.clip = CLIPModel.from_pretrained(clip_pretrained_model)
 
-        if architecture == "mlp":
+        if architecture == "mlp":  # split, based on head and used mapper
             self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
             self.lm_embedding_size = self.lm.transformer.wte.weight.shape[1]
-            self.mapper = MLP(
-                self.visual_output_size,
-                mlp_hidden_size,
-                self.lm_embedding_size * prefix_length,
-                dropout=mlp_dropout,
-            )
+            if not self.direct:
+                self.mapper = MLP(
+                    self.visual_output_size,
+                    mlp_hidden_size,
+                    self.lm_embedding_size * prefix_length,
+                    dropout=mlp_dropout,
+                )
         elif architecture == "clipcap":
             self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
             self.lm_embedding_size = self.lm.transformer.wte.weight.shape[1]
-            self.mapper = ClipCapTransformerMapper(
-                self.visual_output_size, self.lm_embedding_size, prefix_length, 10, 8
-            )
+            if not self.direct:
+                self.mapper = ClipCapTransformerMapper(
+                    self.visual_output_size,
+                    self.lm_embedding_size,
+                    prefix_length,
+                    10,
+                    8,
+                )
         elif architecture == "flan-t5":
             self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
             self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
-            self.mapper = MLP(
-                self.visual_output_size,
-                mlp_hidden_size,
-                self.lm_embedding_size * prefix_length,
-            )
+            if not self.direct:
+                self.mapper = MLP(
+                    self.visual_output_size,
+                    mlp_hidden_size,
+                    self.lm_embedding_size * prefix_length,
+                )
         elif architecture == "flan-mlp":
             # TODO: Load only the decoder weights
             self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
             self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
             self.lm = DecoderWithHead(self.lm.shared, self.lm.decoder, self.lm.lm_head)
-            self.mapper = MLP(
-                self.visual_output_size,
-                mlp_hidden_size,
-                self.lm_embedding_size * prefix_length,  # self.visual_output_size,
-            )
+            if not self.direct:
+              self.mapper = MLP(
+                  self.visual_output_size,
+                  mlp_hidden_size,
+                  self.lm_embedding_size * prefix_length,
+              )
         elif architecture == "flan-transformer":
             # TODO: Load only the decoder weights
             self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
             self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
             self.lm = DecoderWithHead(self.lm.shared, self.lm.decoder, self.lm.lm_head)
-            self.mapper = ClipCapTransformerMapper(
-                self.visual_output_size, self.lm_embedding_size, prefix_length, 10, 8
-            )
+            if not self.direct:
+              self.mapper = ClipCapTransformerMapper(
+                  self.visual_output_size, self.lm_embedding_size, prefix_length, 10, 8
+              )
         else:
             raise ValueError(f"Unknown architecture: {architecture}")
 
@@ -204,14 +215,15 @@ class CaptioningModel(nn.Module):
             return self.lm(inputs_embeds=image_embeds).logits
 
     def get_image_embeds(self, images: torch.Tensor):
-        with torch.no_grad():
-            if self.use_unpooled_output:
-                clip_embeds = self.clip.vision_model(images)[
-                    "last_hidden_state"
-                ].flatten(start_dim=-2)
-            else:
-                clip_embeds = self.clip.vision_model(images)["pooler_output"]
-
+        if self.direct:
+            clip_embeds = self.clip.vision_model(images)["last_hidden_state"]
+            return clip_embeds
+        elif self.use_unpooled_output:
+            clip_embeds = self.clip.vision_model(images)["last_hidden_state"].flatten(
+                start_dim=-2
+            )
+        else:
+            clip_embeds = self.clip.vision_model(images)["pooler_output"]
         return self.mapper(clip_embeds).view(
             -1, self.prefix_length, self.lm_embedding_size
         )
@@ -264,6 +276,7 @@ class TrainingModule(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.model = CaptioningModel(
+            kwargs["direct"],
             prefix_length,
             mlp_hidden_size,
             gpt2_pretrained_model="gpt2" + kwargs["gpt_size"],
@@ -275,6 +288,9 @@ class TrainingModule(pl.LightningModule):
         self.freeze_target(self.model.clip)
         if not kwargs["finetune_lm"]:
             self.freeze_target(self.model.lm)
+            if kwargs["lora"]:
+                self.model.lm = self.get_lora_model(self.model.lm, arch)
+
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
         self.clip_processor = CLIPProcessor.from_pretrained(
             "openai/clip-vit-base-patch32"
@@ -289,6 +305,32 @@ class TrainingModule(pl.LightningModule):
             param.requires_grad = False
 
         target.eval()
+
+    def get_lora_model(self, model, arch, lora_config=None):
+        if not lora_config:
+            if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
+                target_modules = ["q", "v"]
+            elif arch == "clipcap":
+                target_modules = ["c_attn"]
+            elif arch == "mlp":
+                target_modules = ["c_attn"]
+            else:
+                raise ValueError(f"Unknown architecture: {arch}")
+
+            lora_config = LoraConfig(
+                peft_type="LORA",
+                task_type="CAUSAL_LM",
+                r=4,
+                lora_alpha=32,
+                target_modules=target_modules,
+                lora_dropout=0.01,
+                fan_in_fan_out=True,
+            )
+
+        lora_model = get_peft_model(model, lora_config)
+        print("h1")
+        lora_model.print_trainable_parameters()
+        return lora_model
 
     def forward(
         self,
@@ -322,12 +364,8 @@ class TrainingModule(pl.LightningModule):
         total_norm = total_norm ** (1.0 / 2)
         return total_norm
 
-    def get_loss(self, tokens, images, mask, requires_grad=True):
-        if requires_grad:
-            output = self(tokens, images, mask)
-        else:
-            with torch.no_grad():
-                output = self(tokens, images, mask)
+    def get_loss(self, tokens, images, mask):
+        output = self(tokens, images, mask)
 
         if (
             self.hparams.arch == "flan-t5"
@@ -356,35 +394,36 @@ class TrainingModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         # todo: put into eval mode? or is it done automatically?
-        tokens, mask, images = batch
+        with torch.no_grad():
+            tokens, mask, images = batch
 
-        if batch_idx == 0:
-            to_caption = images[:1]
-            with torch.no_grad():
-                image_embeds = self.model.get_image_embeds(to_caption)
-                caption = generate(
+            if batch_idx == 0:
+                for i in range(5):
+                    to_caption = images[i : i + 1]
+                    image_embeds = self.model.get_image_embeds(to_caption)
+                    caption = generate(
+                        self.model,
+                        self.hparams.tokenizer,
+                        image_embeds,
+                        arch=self.hparams.arch,
+                    )
+                    print(f"\ncaption: {caption}\n")
+
+            if batch_idx < self.hparams.eval_batches:
+                scores = evaluate(
                     self.model,
                     self.hparams.tokenizer,
-                    image_embeds,
+                    images,
+                    tokens,
                     arch=self.hparams.arch,
                 )
-                print(f"caption: {caption}")
+                self.log("cider", scores["cider"], prog_bar=True)
 
-        if batch_idx < self.hparams.eval_batches:
-            scores = evaluate(
-                self.model,
-                self.hparams.tokenizer,
-                images,
-                tokens,
-                arch=self.hparams.arch,
-            )
-            self.log("cider", scores["cider"], prog_bar=True)
+            loss = self.get_loss(tokens, images, mask)
 
-        loss = self.get_loss(tokens, images, mask, requires_grad=False)
-
-        self.log("val_loss", loss, prog_bar=True)
-        self.log("trainable_params", float(self.trainable_params))
-        self.log("total_params", float(self.total_params))
+            self.log("val_loss", loss, prog_bar=True)
+            self.log("trainable_params", float(self.trainable_params))
+            self.log("total_params", float(self.total_params))
 
 
 def train_model(
@@ -416,6 +455,8 @@ def train_model(
         log_model=False,
         offline=kwargs["offline"],
     )
+    wandb_logger.experiment.config["job_id"] = os.environ.get("SLURM_JOB_ID", None)
+
     os.makedirs(checkpoint_path, exist_ok=True)
     with open(os.path.join(checkpoint_path, "last_run_id"), "w") as f:
         f.write(run_id)
@@ -460,18 +501,29 @@ def train_model(
         shuffle=True,
         drop_last=True,
         # pin_memory=True,
-        # num_workers=4,
+        # num_workers=16,
     )
     val_loader = DataLoader(
         val_set,
         batch_size=batch_size,
         drop_last=False,
-        # num_workers=4,
+        # num_workers=16,
     )
 
     plugins = []
     if os.environ.get("SLURM_JOB_ID"):
         plugins.append(SLURMEnvironment(requeue_signal=signal.SIGUSR1))
+
+    training_module = TrainingModule(
+        samples_per_epoch=len(train_loader),
+        tokenizer=tokenizer,
+        clip_processor=clip_processor,
+        **kwargs,
+    )
+    wandb_logger.experiment.config[
+        "trainable_params"
+    ] = training_module.trainable_params
+    wandb_logger.experiment.config["total_params"] = training_module.total_params
 
     trainer = pl.Trainer(
         default_root_dir=os.path.join(checkpoint_path, save_name),
@@ -496,13 +548,6 @@ def train_model(
     )
 
     trainer.logger._default_hp_metric = None
-
-    training_module = TrainingModule(
-        samples_per_epoch=len(train_loader),
-        tokenizer=tokenizer,
-        clip_processor=clip_processor,
-        **kwargs,
-    )
 
     if find_lr:
         print("using lr finder")
@@ -557,13 +602,21 @@ def main():
     )
     parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
     parser.add_argument("--eval_batches", type=int, default=16)
-    parser.add_argument("--mlp_dropout", type=float, default=0.2)
+    parser.add_argument("--mlp_dropout", type=float, default=0.0)
     parser.add_argument("--grad_clip", type=float, default=None)
     parser.add_argument("--finetune_lm", action="store_true")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--val_freq", type=int, default=1000)
+    parser.add_argument("--lora", action="store_true")
+    parser.add_argument("--direct", action="store_true")
 
     args = parser.parse_args()
+
+    if args.direct:
+        args.prefix_length = 50
+        args.finetune_lm = True
+    if args.lora:
+        args.finetune_lm = False
 
     print("======= args =======")
     for k, v in vars(args).items():
