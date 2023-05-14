@@ -266,6 +266,8 @@ class TrainingModule(pl.LightningModule):
         self.model = CaptioningModel(
             prefix_length,
             mlp_hidden_size,
+            gpt2_pretrained_model="gpt2" + kwargs["gpt_size"],
+            flan_pretrained_model="google/flan-t5-" + kwargs["flan_size"],
             use_unpooled_output=use_unpooled_output,
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
@@ -425,14 +427,15 @@ def train_model(
     else:
         device = torch.device("cpu")
 
+    kwargs["gpt_size"] = "-" + kwargs["gpt_size"] if kwargs["gpt_size"] != "" else ""
     if kwargs["arch"] == "mlp" or kwargs["arch"] == "clipcap":
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+        tokenizer = GPT2Tokenizer.from_pretrained("gpt2" + kwargs["gpt_size"])
     elif (
         kwargs["arch"] == "flan-t5"
         or kwargs["arch"] == "flan-mlp"
         or kwargs["arch"] == "flan-transformer"
     ):
-        tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-small")
+        tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-" + kwargs["flan_size"])
 
     clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
@@ -549,6 +552,10 @@ def main():
         default="mlp",
         choices=["mlp", "clipcap", "flan-t5", "flan-mlp", "flan-transformer"],
     )
+    parser.add_argument(
+        "--flan_size", default="small", choices=["small", "base", "large", "xl", "xxl"]
+    )
+    parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
     parser.add_argument("--eval_batches", type=int, default=16)
     parser.add_argument("--mlp_dropout", type=float, default=0.2)
     parser.add_argument("--grad_clip", type=float, default=None)
