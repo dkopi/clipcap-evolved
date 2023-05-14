@@ -273,8 +273,8 @@ class TrainingModule(pl.LightningModule):
             param.requires_grad = False
 
         target.eval()
-    def get_lora_model(self, model, arch, lora_config = None):
 
+    def get_lora_model(self, model, arch, lora_config=None):
         if not lora_config:
             if arch == "flan-t5":
                 target_modules = ["q", "v"]
@@ -285,19 +285,20 @@ class TrainingModule(pl.LightningModule):
             else:
                 raise ValueError(f"Unknown architecture: {arch}")
 
-            lora_config = LoraConfig(peft_type="LORA", task_type="CAUSAL_LM",
-                                     r=4,
-                                     lora_alpha=32,
-                                     target_modules=target_modules,
-                                     lora_dropout=0.01,
-                                     fan_in_fan_out=True,
-                                     )
+            lora_config = LoraConfig(
+                peft_type="LORA",
+                task_type="CAUSAL_LM",
+                r=4,
+                lora_alpha=32,
+                target_modules=target_modules,
+                lora_dropout=0.01,
+                fan_in_fan_out=True,
+            )
 
         lora_model = get_peft_model(model, lora_config)
         print("h1")
         lora_model.print_trainable_parameters()
         return lora_model
-
 
     def forward(
         self,
@@ -566,7 +567,7 @@ def main():
         args.prefix_length = 50
         args.finetune_lm = True
     if args.lora:
-        args.finetune_lm = True
+        args.finetune_lm = False
 
     print("======= args =======")
     for k, v in vars(args).items():
