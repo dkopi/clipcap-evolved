@@ -256,7 +256,7 @@ class TrainingModule(pl.LightningModule):
         self.freeze_target(self.model.clip)
         if not kwargs["finetune_lm"]:
             self.freeze_target(self.model.lm)
-            if kwargs["train_with_lora"]:
+            if kwargs["lora"]:
                 self.model.lm = self.get_lora_model(self.model.lm, arch)
 
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
@@ -459,13 +459,13 @@ def train_model(
         shuffle=True,
         drop_last=True,
         # pin_memory=True,
-        num_workers=16,
+        # num_workers=16,
     )
     val_loader = DataLoader(
         val_set,
         batch_size=batch_size,
         drop_last=False,
-        num_workers=16,
+        # num_workers=16,
     )
 
     plugins = []
@@ -557,13 +557,15 @@ def main():
     parser.add_argument("--finetune_lm", action="store_true")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--val_freq", type=int, default=1000)
-    parser.add_argument("--train_with_lora", action="store_true")
+    parser.add_argument("--lora", action="store_true")
     parser.add_argument("--direct", action="store_true")
 
     args = parser.parse_args()
 
     if args.direct:
         args.prefix_length = 50
+        args.finetune_lm = True
+    if args.lora:
         args.finetune_lm = True
 
     print("======= args =======")
