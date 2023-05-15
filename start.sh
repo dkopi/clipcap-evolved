@@ -42,9 +42,13 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/annotations/ca
 # $shared_part --mlp_hidden_size 512 --batch_size 8 --lr 2e-5 --lora --direct_proj --run_name mlp_small_proj_lora_nw
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --direct_proj --run_name mlp_small_proj_nw
 
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 10.0 --flan_size small --arch flan-t5 --run_name flant5_small_nw_gc10
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 10.0 --flan_size small --finetune_lm --arch flan-t5 --run_name flant5_small_nw_gc10_ft
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 10.0 --flan_size base --finetune_lm --arch flan-t5 --run_name flant5_nw_gc10_ft
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 10.0 --flan_size base --finetune_lm --arch flan-mlp --run_name flan_mlp_nw_gc10_ft
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 10.0 --flan_size base --finetune_lm --arch flan-transformer --run_name flan_tr_nw_gc10_ft
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 10.0 --flan_size base --direct_proj --finetune_lm --arch flan-mlp --run_name flan_mlp_direct_proj_nw_gc10_ft
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 10.0 --flan_size base --direct_proj --arch flan-mlp --run_name flan_mlp_direct_proj_nw_gc10
 
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --finetune_lm --run_name mlp_small_finetuned
 # $shared_part --mlp_hidden_size 4096 --batch_size 8 --warmup 1 --run_name mlp_big

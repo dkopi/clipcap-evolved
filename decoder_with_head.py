@@ -6,11 +6,12 @@ from transformers.utils.import_utils import is_torch_fx_proxy
 
 
 class DecoderWithHead(nn.Module):
-    def __init__(self, shared, decoder, lm_head):
+    def __init__(self, shared, decoder, lm_head, config):
         super(DecoderWithHead, self).__init__()
         self.shared = shared
         self.decoder = decoder
         self.lm_head = lm_head
+        self.config = config
 
         self.model_parallel = False
 

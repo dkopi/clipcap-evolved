@@ -148,7 +148,9 @@ class CaptioningModel(nn.Module):
             # TODO: Load only the decoder weights
             self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
             self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
-            self.lm = DecoderWithHead(self.lm.shared, self.lm.decoder, self.lm.lm_head)
+            self.lm = DecoderWithHead(
+                self.lm.shared, self.lm.decoder, self.lm.lm_head, self.lm.config
+            )
         else:
             raise ValueError(f"Unknown architecture: {architecture}")
 
@@ -189,10 +191,32 @@ class CaptioningModel(nn.Module):
     ):
         if self.architecture == "flan-t5":
             # Get the logits of the next token when using flan-t5
+            # eos = torch.tensor([self.lm.config.eos_token_id]).to(image_embeds.device)
+            # eos_embeds = (
+            #     self.token_to_embed(eos)
+            #     .unsqueeze(0)
+            #     .expand(
+            #         image_embeds.shape[0],
+            #         1,
+            #         image_embeds.shape[2],
+            #     )
+            # )
+            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
             return self.lm(
                 inputs_embeds=image_embeds, decoder_inputs_embeds=encoder_outputs
             ).logits
         elif self.architecture == "flan-mlp" or self.architecture == "flan-transformer":
+            # eos = torch.tensor([self.lm.config.eos_token_id]).to(image_embeds.device)
+            # eos_embeds = (
+            #     self.token_to_embed(eos)
+            #     .unsqueeze(0)
+            #     .expand(
+            #         image_embeds.shape[0],
+            #         1,
+            #         image_embeds.shape[2],
+            #     )
+            # )
+            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
             return self.lm(
                 hidden_states=image_embeds, decoder_inputs_embeds=encoder_outputs
             ).logits
@@ -225,12 +249,34 @@ class CaptioningModel(nn.Module):
         image_embeds = self.get_image_embeds(images)
 
         if self.architecture == "flan-t5":
+            # eos = torch.tensor([self.lm.config.eos_token_id]).to(tokens.device)
+            # eos_embeds = (
+            #     self.token_to_embed(eos)
+            #     .unsqueeze(0)
+            #     .expand(
+            #         image_embeds.shape[0],
+            #         1,
+            #         image_embeds.shape[2],
+            #     )
+            # )
+            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
             out = self.lm(inputs_embeds=image_embeds, labels=tokens)
         elif self.architecture == "clipcap" or self.architecture == "mlp":
             embedding_text = self.lm.transformer.wte(tokens)
             embedding_cat = torch.cat((image_embeds, embedding_text), dim=1)
             out = self.lm(inputs_embeds=embedding_cat, attention_mask=mask)
         elif self.architecture == "flan-mlp" or self.architecture == "flan-transformer":
+            # eos = torch.tensor([self.lm.config.eos_token_id]).to(tokens.device)
+            # eos_embeds = (
+            #     self.token_to_embed(eos)
+            #     .unsqueeze(0)
+            #     .expand(
+            #         image_embeds.shape[0],
+            #         1,
+            #         image_embeds.shape[2],
+            #     )
+            # )
+            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
             out = self.lm(hidden_states=image_embeds, labels=tokens)
         else:
             raise ValueError(f"Unknown architecture: {self.architecture}")
@@ -360,7 +406,9 @@ class TrainingModule(pl.LightningModule):
             or self.hparams.arch == "flan-mlp"
             or self.hparams.arch == "flan-transformer"
         ):
-            return output.loss
+            loss = self.loss_module(
+                output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten()
+            )
         elif self.hparams.arch == "mlp" or self.hparams.arch == "clipcap":
             logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
             loss = self.loss_module(

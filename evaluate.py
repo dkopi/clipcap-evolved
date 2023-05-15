@@ -48,11 +48,10 @@ def generate(
     entry_length=50,
     top_p=0.8,  # do we use top_p or temperature?
     temperature=1.0,
-    stop_token: str = ".",
+    # stop_token: str = ".", # might need to set dot for gpt2
     arch: str = "mlp",  # use 'lm_model'
 ):
     model.eval()
-    stop_token_index = tokenizer.encode(stop_token)[0]
     filter_value = -float("Inf")
     generated = embed  # TODO: Conditional image "embed"s to encoder input, decoder to special token according to docs
     if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
@@ -89,12 +88,12 @@ def generate(
             else:
                 tokens = torch.cat((tokens, next_token), dim=1)
             generated = torch.cat((generated, next_token_embed), dim=1)
-            if stop_token_index == next_token.item():
+            if tokenizer.eos_token_id == next_token.item():
                 break
 
         tokens = tokens.squeeze().cpu()
         if len(tokens.shape) == 0:
             tokens = tokens.unsqueeze(0)
         output_list = list(tokens.numpy())
-        output_text = tokenizer.decode(output_list)
+        output_text = tokenizer.decode(output_list, skip_special_tokens=True)
         return output_text
