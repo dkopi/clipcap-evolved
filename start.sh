@@ -38,6 +38,12 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/annotations/ca
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --grad_clip 2.0 --direct --finetune_lm --arch flan-t5 --run_name flant5_finetuned_direct_gc2
 
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --run_name mlp_small
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --warmup 1 --direct_proj --run_name mlp_small_proj
+# $shared_part --mlp_hidden_size 512 --batch_size 8 --lr 2e-5 --direct_proj --run_name mlp_small_proj_nw_deep512
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --lora --direct_proj --run_name mlp_small_proj_lora_nw_deep512
+# $shared_part --mlp_hidden_size 512 --batch_size 8 --lr 2e-5 --lora --direct_proj --run_name mlp_small_proj_lora_nw
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --direct_proj --run_name mlp_small_proj_nw
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 2.0 --flan_size base --direct_proj --arch flan-t5 --run_name flan_mlp_proj_nw_gc2
 
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --finetune_lm --run_name mlp_small_finetuned
 # $shared_part --mlp_hidden_size 4096 --batch_size 8 --warmup 1 --run_name mlp_big
@@ -51,9 +57,12 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/annotations/ca
 
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --grad_clip 2.0 --arch flan-t5 --run_name flant5_gc2
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --grad_clip 10.0 --finetune_lm --arch flan-t5 --run_name flant5_gc10_ft
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 10.0 --finetune_lm --arch flan-t5 --run_name flant5_gc10_ft_nw
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 10.0 --finetune_lm --arch flan-t5 --run_name flant5_gc10_ft_nw_ogloss
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 10.0 --finetune_lm --arch flan-t5 --flan_size base --run_name flant5_base_gc10_ft_nw_ogloss
 
-$shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --arch flan-transformer --flan_size small --run_name flant5_transformer_nw
-# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --finetune_lm --arch flan-t5 --flan_size small --run_name flant5_finetunedencoder_nw
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 2.0 --arch flan-transformer --flan_size small --run_name flant5_transformer_nw_gc2
+# $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --grad_clip 2.0 --finetune_lm --arch flan-t5 --flan_size small --run_name flant5_finetunedencoder_nw_gc2
 
 # $shared_part --batch_size 8 --warmup 1 --lr 2e-5 --direct --finetune_lm --arch flan-mlp --flan_size base --run_name flan_decoder_direct
 # $shared_part --batch_size 8 --lr 2e-5 --direct --grad_clip 2.0 --finetune_lm --arch flan-mlp --flan_size base --run_name flan_decoder_direct_gc2_nowarmup

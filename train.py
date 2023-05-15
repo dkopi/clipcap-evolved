@@ -114,6 +114,7 @@ class CaptioningModel(nn.Module):
     def __init__(
         self,
         direct,
+        direct_proj,
         prefix_length: int = 8,
         mlp_hidden_size: int = 64,
         visual_output_size: int = 768,
@@ -134,64 +135,44 @@ class CaptioningModel(nn.Module):
         else:
             self.visual_output_size = visual_output_size
         self.direct = direct
+        self.direct_proj = direct_proj
         self.clip = CLIPModel.from_pretrained(clip_pretrained_model).vision_model
 
-        if architecture == "mlp":  # split, based on head and used mapper
+        if architecture == "mlp" or architecture == "clipcap":
             self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
             self.lm_embedding_size = self.lm.transformer.wte.weight.shape[1]
-            if not self.direct:
-                self.mapper = MLP(
-                    self.visual_output_size,
-                    mlp_hidden_size,
-                    self.lm_embedding_size * prefix_length,
-                    dropout=mlp_dropout,
-                )
-        elif architecture == "clipcap":
-            self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
-            self.lm_embedding_size = self.lm.transformer.wte.weight.shape[1]
-            if not self.direct:
-                self.mapper = ClipCapTransformerMapper(
-                    self.visual_output_size,
-                    self.lm_embedding_size,
-                    prefix_length,
-                    10,
-                    8,
-                )
         elif architecture == "flan-t5":
             self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
             self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
-            if not self.direct:
-                self.mapper = MLP(
-                    self.visual_output_size,
-                    mlp_hidden_size,
-                    self.lm_embedding_size * prefix_length,
-                )
-        elif architecture == "flan-mlp":
+        elif architecture == "flan-mlp" or architecture == "flan-transformer":
             # TODO: Load only the decoder weights
             self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
             self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
             self.lm = DecoderWithHead(self.lm.shared, self.lm.decoder, self.lm.lm_head)
-            if not self.direct:
-                self.mapper = MLP(
-                    self.visual_output_size,
-                    mlp_hidden_size,
-                    self.lm_embedding_size * prefix_length,
-                )
-        elif architecture == "flan-transformer":
-            # TODO: Load only the decoder weights
-            self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
-            self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
-            self.lm = DecoderWithHead(self.lm.shared, self.lm.decoder, self.lm.lm_head)
-            if not self.direct:
+        else:
+            raise ValueError(f"Unknown architecture: {architecture}")
+
+        if direct_proj:
+            lm_input_size = self.lm_embedding_size
+        else:
+            lm_input_size = self.lm_embedding_size * prefix_length
+
+        if not self.direct:
+            if architecture == "flan-transformer" or architecture == "clipcap":
                 self.mapper = ClipCapTransformerMapper(
                     self.visual_output_size,
-                    self.lm_embedding_size,
+                    lm_input_size,
                     prefix_length,
                     10,
                     8,
                 )
-        else:
-            raise ValueError(f"Unknown architecture: {architecture}")
+            else:
+                self.mapper = MLP(
+                    self.visual_output_size,
+                    mlp_hidden_size,
+                    lm_input_size,
+                    dropout=mlp_dropout,
+                )
 
     def token_to_embed(self, tokens: torch.Tensor):
         if (
@@ -219,8 +200,10 @@ class CaptioningModel(nn.Module):
             return self.lm(inputs_embeds=image_embeds).logits
 
     def get_image_embeds(self, images: torch.Tensor):
-        if self.direct:
+        if self.direct or self.direct_proj:
             clip_embeds = self.clip(images)["last_hidden_state"]
+            if self.direct_proj:
+                clip_embeds = self.mapper(clip_embeds)
             return clip_embeds
         elif self.use_unpooled_output:
             clip_embeds = self.clip(images)["last_hidden_state"].flatten(start_dim=-2)
@@ -279,6 +262,7 @@ class TrainingModule(pl.LightningModule):
         self.save_hyperparameters()
         self.model = CaptioningModel(
             kwargs["direct"],
+            kwargs["direct_proj"],
             prefix_length,
             mlp_hidden_size,
             gpt2_pretrained_model="gpt2" + kwargs["gpt_size"],
@@ -375,9 +359,7 @@ class TrainingModule(pl.LightningModule):
             or self.hparams.arch == "flan-mlp"
             or self.hparams.arch == "flan-transformer"
         ):
-            loss = self.loss_module(
-                output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten()
-            )  # TODO: Do we use our loss or loss from the T5?
+            return output.loss
         elif self.hparams.arch == "mlp" or self.hparams.arch == "clipcap":
             logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
             loss = self.loss_module(
@@ -612,12 +594,15 @@ def main():
     parser.add_argument("--val_freq", type=int, default=1000)
     parser.add_argument("--lora", action="store_true")
     parser.add_argument("--direct", action="store_true")
+    parser.add_argument("--direct_proj", action="store_true")
 
     args = parser.parse_args()
 
     if args.direct:
         args.prefix_length = 50
         args.finetune_lm = True
+    if args.direct_proj:
+        args.prefix_length = 50
     if args.lora:
         args.finetune_lm = False
 
