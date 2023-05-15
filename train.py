@@ -583,7 +583,7 @@ def main():
         choices=["mlp", "clipcap", "flan-t5", "flan-mlp", "flan-transformer"],
     )
     parser.add_argument(
-        "--flan_size", default="small", choices=["small", "base", "large", "xl", "xxl"]
+        "--flan_size", default="base", choices=["small", "base", "large", "xl", "xxl"]
     )
     parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
     parser.add_argument("--eval_batches", type=int, default=16)
