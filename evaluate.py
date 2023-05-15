@@ -49,7 +49,7 @@ def generate(
     top_p=0.8,  # do we use top_p or temperature?
     temperature=1.0,
     stop_token: str = ".",
-    arch: str = "mlp", # use 'lm_model'
+    arch: str = "mlp",  # use 'lm_model'
 ):
     model.eval()
     stop_token_index = tokenizer.encode(stop_token)[0]
@@ -57,8 +57,9 @@ def generate(
     generated = embed  # TODO: Conditional image "embed"s to encoder input, decoder to special token according to docs
     if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
         encoder_input = embed
-        pad_id = tokenizer("<pad>", return_tensors="pt").input_ids.to(embed.device)
-        generated = model.token_to_embed(pad_id)
+        generated = model.token_to_embed(
+            torch.zeros((1, 1), dtype=torch.long).to(embed.device)
+        )
 
     tokens = None
 

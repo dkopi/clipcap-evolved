@@ -200,18 +200,21 @@ class CaptioningModel(nn.Module):
             return self.lm(inputs_embeds=image_embeds).logits
 
     def get_image_embeds(self, images: torch.Tensor):
-        if self.direct or self.direct_proj:
-            clip_embeds = self.clip(images)["last_hidden_state"]
-            if self.direct_proj:
-                clip_embeds = self.mapper(clip_embeds)
-            return clip_embeds
-        elif self.use_unpooled_output:
-            clip_embeds = self.clip(images)["last_hidden_state"].flatten(start_dim=-2)
-        else:
-            clip_embeds = self.clip(images)["pooler_output"]
-        return self.mapper(clip_embeds).view(
-            -1, self.prefix_length, self.lm_embedding_size
-        )
+        with torch.no_grad():
+            if self.direct or self.direct_proj:
+                clip_embeds = self.clip(images)["last_hidden_state"]
+                if self.direct_proj:
+                    clip_embeds = self.mapper(clip_embeds)
+                return clip_embeds
+            elif self.use_unpooled_output:
+                clip_embeds = self.clip(images)["last_hidden_state"].flatten(
+                    start_dim=-2
+                )
+            else:
+                clip_embeds = self.clip(images)["pooler_output"]
+            return self.mapper(clip_embeds).view(
+                -1, self.prefix_length, self.lm_embedding_size
+            )
 
     def forward(
         self,
@@ -223,9 +226,7 @@ class CaptioningModel(nn.Module):
 
         if self.architecture == "flan-t5":
             out = self.lm(inputs_embeds=image_embeds, labels=tokens)
-        elif (
-            self.architecture == "clipcap" or self.architecture == "mlp"
-        ):  # GPT for now
+        elif self.architecture == "clipcap" or self.architecture == "mlp":
             embedding_text = self.lm.transformer.wte(tokens)
             embedding_cat = torch.cat((image_embeds, embedding_text), dim=1)
             out = self.lm(inputs_embeds=embedding_cat, attention_mask=mask)
