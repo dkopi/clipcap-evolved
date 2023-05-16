@@ -163,7 +163,7 @@ class CaptioningModel(nn.Module):
             if architecture == "flan-transformer" or architecture == "clipcap":
                 self.mapper = ClipCapTransformerMapper(
                     self.visual_output_size,
-                    lm_input_size,
+                    self.lm_embedding_size,
                     prefix_length,
                     10,
                     8,
