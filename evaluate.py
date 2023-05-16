@@ -48,23 +48,23 @@ def generate(
     entry_length=50,
     top_p=0.8,  # do we use top_p or temperature?
     temperature=1.0,
-    stop_token: str = ".",
-    arch: str = "mlp",
+    # stop_token: str = ".", # might need to set dot for gpt2
+    arch: str = "mlp",  # use 'lm_model'
 ):
     model.eval()
-    stop_token_index = tokenizer.encode(stop_token)[0]
     filter_value = -float("Inf")
     generated = embed  # TODO: Conditional image "embed"s to encoder input, decoder to special token according to docs
-    if arch == "flan-t5":
+    if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
         encoder_input = embed
-        pad_id = tokenizer("<pad>", return_tensors="pt").input_ids.to(embed.device)
-        generated = model.token_to_embed(pad_id)
+        generated = model.token_to_embed(
+            torch.zeros((1, 1), dtype=torch.long).to(embed.device)
+        )
 
     tokens = None
 
     with torch.no_grad():
         for i in range(entry_length):
-            if arch == "flan-t5":
+            if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
                 logits = model.get_logits(encoder_input, generated)
             else:
                 logits = model.get_logits(generated)
@@ -88,12 +88,12 @@ def generate(
             else:
                 tokens = torch.cat((tokens, next_token), dim=1)
             generated = torch.cat((generated, next_token_embed), dim=1)
-            if stop_token_index == next_token.item():
+            if tokenizer.eos_token_id == next_token.item():
                 break
 
         tokens = tokens.squeeze().cpu()
         if len(tokens.shape) == 0:
             tokens = tokens.unsqueeze(0)
         output_list = list(tokens.numpy())
-        output_text = tokenizer.decode(output_list)
+        output_text = tokenizer.decode(output_list, skip_special_tokens=True)
         return output_text

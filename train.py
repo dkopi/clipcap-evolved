@@ -28,6 +28,7 @@ from pycocotools.coco import COCO
 import wandb
 import numpy as np
 from clipcap_transformer import ClipCapTransformerMapper
+from decoder_with_head import DecoderWithHead
 from evaluate import generate, evaluate
 from peft import LoraConfig, get_peft_model
 
@@ -112,11 +113,13 @@ class MLP(nn.Module):
 class CaptioningModel(nn.Module):
     def __init__(
         self,
+        direct,
+        direct_proj,
         prefix_length: int = 8,
         mlp_hidden_size: int = 64,
         visual_output_size: int = 768,
         gpt2_pretrained_model="gpt2",
-        flan_pretrained_model="google/flan-t5-small",
+        flan_pretrained_model="google/flan-t5-base",
         clip_pretrained_model="openai/clip-vit-base-patch32",
         use_unpooled_output: bool = False,
         architecture: str = "mlp",
@@ -131,38 +134,54 @@ class CaptioningModel(nn.Module):
             self.visual_output_size = visual_output_size * 50
         else:
             self.visual_output_size = visual_output_size
+        self.direct = direct
+        self.direct_proj = direct_proj
+        self.clip = CLIPModel.from_pretrained(clip_pretrained_model).vision_model
 
-        self.clip = CLIPModel.from_pretrained(clip_pretrained_model)
-
-        if architecture == "mlp":
+        if architecture == "mlp" or architecture == "clipcap":
             self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
             self.lm_embedding_size = self.lm.transformer.wte.weight.shape[1]
-            self.mapper = MLP(
-                self.visual_output_size,
-                mlp_hidden_size,
-                self.lm_embedding_size * prefix_length,
-                dropout=mlp_dropout,
-            )
-        elif architecture == "clipcap":
-            self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
-            self.lm_embedding_size = self.lm.transformer.wte.weight.shape[1]
-            self.mapper = ClipCapTransformerMapper(
-                self.visual_output_size, self.lm_embedding_size, prefix_length, 10, 8
-            )
         elif architecture == "flan-t5":
             self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
             self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
-            self.mapper = MLP(
-                self.visual_output_size,
-                mlp_hidden_size,
-                self.lm_embedding_size * prefix_length,
+        elif architecture == "flan-mlp" or architecture == "flan-transformer":
+            # TODO: Load only the decoder weights
+            self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
+            self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
+            self.lm = DecoderWithHead(
+                self.lm.shared, self.lm.decoder, self.lm.lm_head, self.lm.config
             )
-
         else:
             raise ValueError(f"Unknown architecture: {architecture}")
 
+        if direct_proj:
+            lm_input_size = self.lm_embedding_size
+        else:
+            lm_input_size = self.lm_embedding_size * prefix_length
+
+        if not self.direct:
+            if architecture == "flan-transformer" or architecture == "clipcap":
+                self.mapper = ClipCapTransformerMapper(
+                    self.visual_output_size,
+                    self.lm_embedding_size,
+                    prefix_length,
+                    10,
+                    8,
+                )
+            else:
+                self.mapper = MLP(
+                    self.visual_output_size,
+                    mlp_hidden_size,
+                    lm_input_size,
+                    dropout=mlp_dropout,
+                )
+
     def token_to_embed(self, tokens: torch.Tensor):
-        if self.architecture == "flan-t5":
+        if (
+            self.architecture == "flan-t5"
+            or self.architecture == "flan-mlp"
+            or self.architecture == "flan-transformer"
+        ):
             return self.lm.get_input_embeddings()(tokens)
         else:
             return self.lm.transformer.wte(tokens)
@@ -172,21 +191,48 @@ class CaptioningModel(nn.Module):
     ):
         if self.architecture == "flan-t5":
             # Get the logits of the next token when using flan-t5
+            # eos = torch.tensor([self.lm.config.eos_token_id]).to(image_embeds.device)
+            # eos_embeds = (
+            #     self.token_to_embed(eos)
+            #     .unsqueeze(0)
+            #     .expand(
+            #         image_embeds.shape[0],
+            #         1,
+            #         image_embeds.shape[2],
+            #     )
+            # )
+            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
             return self.lm(
                 inputs_embeds=image_embeds, decoder_inputs_embeds=encoder_outputs
+            ).logits
+        elif self.architecture == "flan-mlp" or self.architecture == "flan-transformer":
+            # eos = torch.tensor([self.lm.config.eos_token_id]).to(image_embeds.device)
+            # eos_embeds = (
+            #     self.token_to_embed(eos)
+            #     .unsqueeze(0)
+            #     .expand(
+            #         image_embeds.shape[0],
+            #         1,
+            #         image_embeds.shape[2],
+            #     )
+            # )
+            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
+            return self.lm(
+                hidden_states=image_embeds, decoder_inputs_embeds=encoder_outputs
             ).logits
         else:
             return self.lm(inputs_embeds=image_embeds).logits
 
     def get_image_embeds(self, images: torch.Tensor):
-        with torch.no_grad():
-            if self.use_unpooled_output:
-                clip_embeds = self.clip.vision_model(images)[
-                    "last_hidden_state"
-                ].flatten(start_dim=-2)
-            else:
-                clip_embeds = self.clip.vision_model(images)["pooler_output"]
-
+        if self.direct or self.direct_proj:
+            clip_embeds = self.clip(images)["last_hidden_state"]
+            if self.direct_proj:
+                clip_embeds = self.mapper(clip_embeds)
+            return clip_embeds
+        elif self.use_unpooled_output:
+            clip_embeds = self.clip(images)["last_hidden_state"].flatten(start_dim=-2)
+        else:
+            clip_embeds = self.clip(images)["pooler_output"]
         return self.mapper(clip_embeds).view(
             -1, self.prefix_length, self.lm_embedding_size
         )
@@ -200,13 +246,35 @@ class CaptioningModel(nn.Module):
         image_embeds = self.get_image_embeds(images)
 
         if self.architecture == "flan-t5":
+            # eos = torch.tensor([self.lm.config.eos_token_id]).to(tokens.device)
+            # eos_embeds = (
+            #     self.token_to_embed(eos)
+            #     .unsqueeze(0)
+            #     .expand(
+            #         image_embeds.shape[0],
+            #         1,
+            #         image_embeds.shape[2],
+            #     )
+            # )
+            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
             out = self.lm(inputs_embeds=image_embeds, labels=tokens)
-        elif (
-            self.architecture == "clipcap" or self.architecture == "mlp"
-        ):  # GPT for now
+        elif self.architecture == "clipcap" or self.architecture == "mlp":
             embedding_text = self.lm.transformer.wte(tokens)
             embedding_cat = torch.cat((image_embeds, embedding_text), dim=1)
             out = self.lm(inputs_embeds=embedding_cat, attention_mask=mask)
+        elif self.architecture == "flan-mlp" or self.architecture == "flan-transformer":
+            # eos = torch.tensor([self.lm.config.eos_token_id]).to(tokens.device)
+            # eos_embeds = (
+            #     self.token_to_embed(eos)
+            #     .unsqueeze(0)
+            #     .expand(
+            #         image_embeds.shape[0],
+            #         1,
+            #         image_embeds.shape[2],
+            #     )
+            # )
+            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
+            out = self.lm(hidden_states=image_embeds, labels=tokens)
         else:
             raise ValueError(f"Unknown architecture: {self.architecture}")
 
@@ -237,16 +305,23 @@ class TrainingModule(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.model = CaptioningModel(
+            kwargs["direct"],
+            kwargs["direct_proj"],
             prefix_length,
             mlp_hidden_size,
+            gpt2_pretrained_model="gpt2" + kwargs["gpt_size"],
+            flan_pretrained_model="google/flan-t5-" + kwargs["flan_size"],
             use_unpooled_output=use_unpooled_output,
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
         )
         self.freeze_target(self.model.clip)
         if not kwargs["finetune_lm"]:
-            self.freeze_target(self.model.lm)
-            if kwargs["train_with_lora"]:
+            if self.hparams.arch == "flan-t5":
+                self.freeze_target(self.model.lm.encoder)
+            else:
+                self.freeze_target(self.model.lm)
+            if kwargs["lora"]:
                 self.model.lm = self.get_lora_model(self.model.lm, arch)
 
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
@@ -263,31 +338,30 @@ class TrainingModule(pl.LightningModule):
             param.requires_grad = False
 
         target.eval()
-    def get_lora_model(self, model, arch, lora_config = None):
 
+    def get_lora_model(self, model, arch, lora_config=None):
         if not lora_config:
-            if arch == "flan-t5":
+            if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
                 target_modules = ["q", "v"]
-            elif arch == "clipcap":
-                target_modules = ["c_attn"]
-            elif arch == "mlp":
-                target_modules = ["c_attn"]
+            elif arch == "clipcap" or arch == "mlp":
+                target_modules = ["c_attn", "c_proj", "c_fc", "lm_head"]
             else:
                 raise ValueError(f"Unknown architecture: {arch}")
 
-            lora_config = LoraConfig(peft_type="LORA", task_type="CAUSAL_LM",
-                                     r=4,
-                                     lora_alpha=32,
-                                     target_modules=target_modules,
-                                     lora_dropout=0.01,
-                                     fan_in_fan_out=True,
-                                     )
+            lora_config = LoraConfig(
+                peft_type="LORA",
+                task_type="CAUSAL_LM",
+                r=4,
+                lora_alpha=32,
+                target_modules=target_modules,
+                lora_dropout=0.01,
+                fan_in_fan_out=True,
+            )
 
         lora_model = get_peft_model(model, lora_config)
         print("h1")
         lora_model.print_trainable_parameters()
         return lora_model
-
 
     def forward(
         self,
@@ -321,17 +395,17 @@ class TrainingModule(pl.LightningModule):
         total_norm = total_norm ** (1.0 / 2)
         return total_norm
 
-    def get_loss(self, tokens, images, mask, requires_grad=True):
-        if requires_grad:
-            output = self(tokens, images, mask)
-        else:
-            with torch.no_grad():
-                output = self(tokens, images, mask)
+    def get_loss(self, tokens, images, mask):
+        output = self(tokens, images, mask)
 
-        if self.hparams.arch == "flan-t5":
+        if (
+            self.hparams.arch == "flan-t5"
+            or self.hparams.arch == "flan-mlp"
+            or self.hparams.arch == "flan-transformer"
+        ):
             loss = self.loss_module(
                 output.logits.reshape(-1, output.logits.shape[-1]), tokens.flatten()
-            )  # TODO: Do we use our loss or loss from the T5?
+            )
         elif self.hparams.arch == "mlp" or self.hparams.arch == "clipcap":
             logits = output.logits[:, self.hparams.prefix_length - 1 : -1]
             loss = self.loss_module(
@@ -351,35 +425,36 @@ class TrainingModule(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         # todo: put into eval mode? or is it done automatically?
-        tokens, mask, images = batch
+        with torch.no_grad():
+            tokens, mask, images = batch
 
-        if batch_idx == 0:
-            to_caption = images[:1]
-            with torch.no_grad():
-                image_embeds = self.model.get_image_embeds(to_caption)
-                caption = generate(
+            if batch_idx == 0:
+                for i in range(5):
+                    to_caption = images[i : i + 1]
+                    image_embeds = self.model.get_image_embeds(to_caption)
+                    caption = generate(
+                        self.model,
+                        self.hparams.tokenizer,
+                        image_embeds,
+                        arch=self.hparams.arch,
+                    )
+                    print(f"\ncaption: {caption}\n")
+
+            if batch_idx < self.hparams.eval_batches:
+                scores = evaluate(
                     self.model,
                     self.hparams.tokenizer,
-                    image_embeds,
+                    images,
+                    tokens,
                     arch=self.hparams.arch,
                 )
-                print(f"caption: {caption}")
+                self.log("cider", scores["cider"], prog_bar=True)
 
-        if batch_idx < self.hparams.eval_batches:
-            scores = evaluate(
-                self.model,
-                self.hparams.tokenizer,
-                images,
-                tokens,
-                arch=self.hparams.arch,
-            )
-            self.log("cider", scores["cider"], prog_bar=True)
+            loss = self.get_loss(tokens, images, mask)
 
-        loss = self.get_loss(tokens, images, mask, requires_grad=False)
-
-        self.log("val_loss", loss, prog_bar=True)
-        self.log("trainable_params", float(self.trainable_params))
-        self.log("total_params", float(self.total_params))
+            self.log("val_loss", loss, prog_bar=True)
+            self.log("trainable_params", float(self.trainable_params))
+            self.log("total_params", float(self.total_params))
 
 
 def train_model(
@@ -405,12 +480,14 @@ def train_model(
     wandb_logger = WandbLogger(
         project="clipcap_evolved",
         name=run_name,
-        entity="clipcap-dl2",
+        # entity="clipcap-dl2",
         id=run_id,
         resume="allow",
         log_model=False,
         offline=kwargs["offline"],
     )
+    wandb_logger.experiment.config["job_id"] = os.environ.get("SLURM_JOB_ID", None)
+
     os.makedirs(checkpoint_path, exist_ok=True)
     with open(os.path.join(checkpoint_path, "last_run_id"), "w") as f:
         f.write(run_id)
@@ -422,10 +499,15 @@ def train_model(
     else:
         device = torch.device("cpu")
 
+    kwargs["gpt_size"] = "-" + kwargs["gpt_size"] if kwargs["gpt_size"] != "" else ""
     if kwargs["arch"] == "mlp" or kwargs["arch"] == "clipcap":
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-    elif kwargs["arch"] == "flan-t5":
-        tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-small")
+        tokenizer = GPT2Tokenizer.from_pretrained("gpt2" + kwargs["gpt_size"])
+    elif (
+        kwargs["arch"] == "flan-t5"
+        or kwargs["arch"] == "flan-mlp"
+        or kwargs["arch"] == "flan-transformer"
+    ):
+        tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-" + kwargs["flan_size"])
 
     clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
@@ -449,7 +531,7 @@ def train_model(
         batch_size=batch_size,
         shuffle=True,
         drop_last=True,
-        # pin_memory=True,
+        pin_memory=True,
         num_workers=16,
     )
     val_loader = DataLoader(
@@ -463,6 +545,17 @@ def train_model(
     if os.environ.get("SLURM_JOB_ID"):
         plugins.append(SLURMEnvironment(requeue_signal=signal.SIGUSR1))
 
+    training_module = TrainingModule(
+        samples_per_epoch=len(train_loader),
+        tokenizer=tokenizer,
+        clip_processor=clip_processor,
+        **kwargs,
+    )
+    wandb_logger.experiment.config[
+        "trainable_params"
+    ] = training_module.trainable_params
+    wandb_logger.experiment.config["total_params"] = training_module.total_params
+
     trainer = pl.Trainer(
         default_root_dir=os.path.join(checkpoint_path, save_name),
         accelerator="gpu" if not str(device).startswith("cpu") else "cpu",
@@ -474,25 +567,18 @@ def train_model(
             # ),  # Save the best checkpoint based on the maximum val_acc recorded. Saves only weights and not optimizer
             LearningRateMonitor("step"),
             # LearningRateMonitor("epoch"),
-            TQDMProgressBar(refresh_rate=10),
+            TQDMProgressBar(refresh_rate=100),
         ],
         enable_checkpointing=False,
         enable_progress_bar=True,
         logger=wandb_logger,
-        log_every_n_steps=10,
+        log_every_n_steps=100,
         val_check_interval=kwargs["val_freq"],
         plugins=plugins,
         gradient_clip_val=kwargs["grad_clip"],
     )
 
     trainer.logger._default_hp_metric = None
-
-    training_module = TrainingModule(
-        samples_per_epoch=len(train_loader),
-        tokenizer=tokenizer,
-        clip_processor=clip_processor,
-        **kwargs,
-    )
 
     if find_lr:
         print("using lr finder")
@@ -537,17 +623,34 @@ def main():
     parser.add_argument("--run_name", default=None)
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--use_unpooled_output", action="store_true")
-    parser.add_argument("--arch", default="mlp", choices=["mlp", "clipcap", "flan-t5"])
-    parser.add_argument("--eval_batches", type=int, default=16)
-    parser.add_argument("--mlp_dropout", type=float, default=0.2)
+    parser.add_argument(
+        "--arch",
+        default="mlp",
+        choices=["mlp", "clipcap", "flan-t5", "flan-mlp", "flan-transformer"],
+    )
+    parser.add_argument(
+        "--flan_size", default="base", choices=["small", "base", "large", "xl", "xxl"]
+    )
+    parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
+    parser.add_argument("--eval_batches", type=int, default=64)
+    parser.add_argument("--mlp_dropout", type=float, default=0.0)
     parser.add_argument("--grad_clip", type=float, default=None)
     parser.add_argument("--finetune_lm", action="store_true")
     parser.add_argument("--offline", action="store_true")
-    parser.add_argument("--val_freq", type=int, default=1000)
-    parser.add_argument("--train_with_lora", action="store_true")
-
+    parser.add_argument("--val_freq", type=int, default=2000)
+    parser.add_argument("--lora", action="store_true")
+    parser.add_argument("--direct", action="store_true")
+    parser.add_argument("--direct_proj", action="store_true")
 
     args = parser.parse_args()
+
+    if args.direct:
+        args.prefix_length = 50
+        args.finetune_lm = True
+    if args.direct_proj:
+        args.prefix_length = 50
+    if args.lora:
+        args.finetune_lm = False
 
     print("======= args =======")
     for k, v in vars(args).items():
