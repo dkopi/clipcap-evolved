@@ -77,7 +77,7 @@ def generate(
             if batch_size > 1:
                 next_token = next_token.unsqueeze(1)  # add the batch dimension
             next_token = next_token.masked_fill(eos_mask, tokenizer.eos_token_id)
-            next_token_embed = model.get_input_embeddings()(next_token)
+            next_token_embed = model.token_to_embed(next_token)
             if tokens is None:
                 tokens = next_token
             else:
