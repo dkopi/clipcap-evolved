@@ -224,21 +224,18 @@ class CaptioningModel(nn.Module):
             return self.lm(inputs_embeds=image_embeds).logits
 
     def get_image_embeds(self, images: torch.Tensor):
-        with torch.no_grad():
-            if self.direct or self.direct_proj:
-                clip_embeds = self.clip(images)["last_hidden_state"]
-                if self.direct_proj:
-                    clip_embeds = self.mapper(clip_embeds)
-                return clip_embeds
-            elif self.use_unpooled_output:
-                clip_embeds = self.clip(images)["last_hidden_state"].flatten(
-                    start_dim=-2
-                )
-            else:
-                clip_embeds = self.clip(images)["pooler_output"]
-            return self.mapper(clip_embeds).view(
-                -1, self.prefix_length, self.lm_embedding_size
-            )
+        if self.direct or self.direct_proj:
+            clip_embeds = self.clip(images)["last_hidden_state"]
+            if self.direct_proj:
+                clip_embeds = self.mapper(clip_embeds)
+            return clip_embeds
+        elif self.use_unpooled_output:
+            clip_embeds = self.clip(images)["last_hidden_state"].flatten(start_dim=-2)
+        else:
+            clip_embeds = self.clip(images)["pooler_output"]
+        return self.mapper(clip_embeds).view(
+            -1, self.prefix_length, self.lm_embedding_size
+        )
 
     def forward(
         self,
@@ -483,7 +480,7 @@ def train_model(
     wandb_logger = WandbLogger(
         project="clipcap_evolved",
         name=run_name,
-        entity="clipcap-dl2",
+        # entity="clipcap-dl2",
         id=run_id,
         resume="allow",
         log_model=False,
@@ -570,12 +567,12 @@ def train_model(
             # ),  # Save the best checkpoint based on the maximum val_acc recorded. Saves only weights and not optimizer
             LearningRateMonitor("step"),
             # LearningRateMonitor("epoch"),
-            TQDMProgressBar(refresh_rate=10),
+            TQDMProgressBar(refresh_rate=100),
         ],
         enable_checkpointing=False,
         enable_progress_bar=True,
         logger=wandb_logger,
-        log_every_n_steps=10,
+        log_every_n_steps=100,
         val_check_interval=kwargs["val_freq"],
         plugins=plugins,
         gradient_clip_val=kwargs["grad_clip"],
@@ -635,12 +632,12 @@ def main():
         "--flan_size", default="base", choices=["small", "base", "large", "xl", "xxl"]
     )
     parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
-    parser.add_argument("--eval_batches", type=int, default=16)
+    parser.add_argument("--eval_batches", type=int, default=64)
     parser.add_argument("--mlp_dropout", type=float, default=0.0)
     parser.add_argument("--grad_clip", type=float, default=None)
     parser.add_argument("--finetune_lm", action="store_true")
     parser.add_argument("--offline", action="store_true")
-    parser.add_argument("--val_freq", type=int, default=1000)
+    parser.add_argument("--val_freq", type=int, default=2000)
     parser.add_argument("--lora", action="store_true")
     parser.add_argument("--direct", action="store_true")
     parser.add_argument("--direct_proj", action="store_true")
