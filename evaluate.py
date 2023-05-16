@@ -52,15 +52,15 @@ def generate(
     arch: str = "mlp",  # use 'lm_model'
 ):
     model.eval()
-    filter_value = -float("Inf")
+    batch_size = embed.size(0)
     generated = embed  # TODO: Conditional image "embed"s to encoder input, decoder to special token according to docs
     if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
         encoder_input = embed
         generated = model.token_to_embed(
-            torch.zeros((1, 1), dtype=torch.long).to(embed.device)
+            torch.zeros((batch_size, 1), dtype=torch.long).to(embed.device)
         )
 
-    tokens = None
+    tokens = torch.zeros((batch_size, 0), dtype=torch.long).to(generated.device)
 
     with torch.no_grad():
         for i in range(entry_length):
@@ -68,32 +68,31 @@ def generate(
                 logits = model.get_logits(encoder_input, generated)
             else:
                 logits = model.get_logits(generated)
-            logits = logits[:, -1, :] / (temperature if temperature > 0 else 1.0)
-            # is it a bottleneck?
-            sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-            cumulative_probs = torch.cumsum(nnf.softmax(sorted_logits, dim=-1), dim=-1)
-            # use top_p conditionally?
-            sorted_indices_to_remove = cumulative_probs > top_p
-            sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[
-                ..., :-1
-            ].clone()
-            sorted_indices_to_remove[..., 0] = 0
-
-            indices_to_remove = sorted_indices[sorted_indices_to_remove]
-            logits[:, indices_to_remove] = filter_value
-            next_token = torch.argmax(logits, -1).unsqueeze(0)
-            next_token_embed = model.token_to_embed(next_token)
+            logits = logits[:, -1, :]
+            eos_mask = torch.any(tokens == tokenizer.eos_token_id, dim=1)
+            eos_mask = eos_mask.unsqueeze(1)
+            next_token = torch.argmax(logits, -1).squeeze(
+                0
+            )  # remove the extra dimension
+            if batch_size > 1:
+                next_token = next_token.unsqueeze(1)  # add the batch dimension
+            next_token = next_token.masked_fill(eos_mask, tokenizer.eos_token_id)
+            next_token_embed = model.get_input_embeddings()(next_token)
             if tokens is None:
                 tokens = next_token
             else:
                 tokens = torch.cat((tokens, next_token), dim=1)
-            generated = torch.cat((generated, next_token_embed), dim=1)
-            if tokenizer.eos_token_id == next_token.item():
+            generated = torch.cat(
+                (generated, next_token_embed), dim=1
+            )  # Concatenate along the sequence dimension
+            if torch.all(torch.any(tokens == tokenizer.eos_token_id, dim=1)):
                 break
 
         tokens = tokens.squeeze().cpu()
         if len(tokens.shape) == 0:
             tokens = tokens.unsqueeze(0)
-        output_list = list(tokens.numpy())
-        output_text = tokenizer.decode(output_list, skip_special_tokens=True)
+        if batch_size > 1:
+            output_text = tokenizer.batch_decode(tokens, skip_special_tokens=True)
+        else:
+            output_text = tokenizer.decode(tokens, skip_special_tokens=True)
         return output_text
