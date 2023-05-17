@@ -282,19 +282,23 @@ class CaptioningModel(nn.Module):
 
 
 class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
-    def __init__(self, optimizer, warmup, max_iters):
+    def __init__(self, optimizer, warmup, max_iters, no_cosine=False):
         self.warmup = warmup
+        self.no_cosine = no_cosine
         self.max_num_iters = max_iters
         super().__init__(optimizer)
 
     def get_lr(self):
-        lr_factor = self.get_lr_factor(epoch=self.last_epoch)
+        lr_factor = self.get_lr_factor(step=self.last_epoch)
         return [base_lr * lr_factor for base_lr in self.base_lrs]
 
-    def get_lr_factor(self, epoch):
-        lr_factor = 0.5 * (1 + np.cos(np.pi * epoch / self.max_num_iters))
-        if epoch <= self.warmup:
-            lr_factor *= epoch * 1.0 / self.warmup
+    def get_lr_factor(self, step):
+        if self.no_cosine:
+            lr_factor = 1.0
+        else:
+            lr_factor = 0.5 * (1 + np.cos(np.pi * step / self.max_num_iters))
+        if step <= self.warmup:
+            lr_factor *= step * 1.0 / self.warmup
         return lr_factor
 
 
@@ -381,8 +385,11 @@ class TrainingModule(pl.LightningModule):
             lr_scheduler = CosineWarmupScheduler(
                 optimizer,
                 # todo: make it equal for whole epochs?
-                warmup=self.hparams.warmup * self.hparams.samples_per_epoch,
+                warmup=self.hparams.warmup
+                if self.hparams.warmup_use_steps
+                else self.hparams.warmup * self.hparams.samples_per_epoch,
                 max_iters=self.hparams.epochs * self.hparams.samples_per_epoch,
+                no_cosine=self.hparams.no_cosine,
                 # optimizer, warmup=self.hparams.warmup, max_iters=self.hparams.max_iters
             )
             return [optimizer], [{"scheduler": lr_scheduler, "interval": "step"}]
@@ -625,6 +632,8 @@ def main():
     parser.add_argument("--find_lr", action="store_true")
     parser.add_argument("--run_name", default=None)
     parser.add_argument("--warmup", type=int, default=None)
+    parser.add_argument("--warmup_use_steps", action="store_true")
+    parser.add_argument("--no_cosine", action="store_true")
     parser.add_argument("--use_unpooled_output", action="store_true")
     parser.add_argument(
         "--arch",
