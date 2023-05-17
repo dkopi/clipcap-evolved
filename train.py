@@ -322,6 +322,9 @@ class TrainingModule(pl.LightningModule):
             else:
                 self.freeze_target(self.model.lm)
             if kwargs["lora"]:
+                if self.hparams.arch == "flan-t5":
+                    #Also freezing the decoder for LORA (Confirm if required)
+                    self.freeze_target(self.model.lm)
                 self.model.lm = self.get_lora_model(self.model.lm, arch)
 
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
