@@ -318,7 +318,7 @@ class TrainingModule(pl.LightningModule):
         self.freeze_target(self.model.clip)
         if not kwargs["finetune_lm"]:
             if self.hparams.arch == "flan-t5":
-                self.freeze_target(self.model.lm.encoder)
+                self.freeze_target(self.model.lm.decoder)
             else:
                 self.freeze_target(self.model.lm)
             if kwargs["lora"]:
