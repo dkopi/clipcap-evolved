@@ -21,15 +21,16 @@ def evaluate(model, tokenizer, images, tokens, arch: str = "mlp"):
     # spice = Spice()
 
     with torch.no_grad():
-        # (batch_size, dim1, dim2)
         embeds = model.get_image_embeds(images.to(device))
-        # (1, dim1, dim2)
-        embeds = torch.split(embeds, 1)
-        # (dim1, dim2)
-        for i, image_embeds in enumerate(embeds):
-            caption = generate(model, tokenizer, image_embeds, arch=arch)
-            hypothesis[i] = [caption]
-            references[i] = [tokenizer.decode(tokens[i].cpu().numpy())]
+        captions = generate(model, tokenizer, embeds, arch=arch)
+
+    if tokens.shape[0] > 1:
+        decoded_tokens = tokenizer.batch_decode(tokens, skip_special_tokens=True)
+    else:
+        decoded_tokens = tokenizer.decode(tokens, skip_special_tokens=True)
+
+    hypothesis = {i + 1: [caption] for i, caption in enumerate(captions)}
+    references = {i + 1: [token] for i, token in enumerate(decoded_tokens)}
 
     cider_score, _ = cider.compute_score(references, hypothesis)
     # spice_score, _ = spice.compute_score(references, hypothesis)
@@ -52,6 +53,7 @@ def generate(
     arch: str = "mlp",  # use 'lm_model'
 ):
     model.eval()
+    stop_token_id = tokenizer.eos_token_id
     batch_size = embed.size(0)
     generated = embed  # TODO: Conditional image "embed"s to encoder input, decoder to special token according to docs
     if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
@@ -69,14 +71,14 @@ def generate(
             else:
                 logits = model.get_logits(generated)
             logits = logits[:, -1, :]
-            eos_mask = torch.any(tokens == tokenizer.eos_token_id, dim=1)
+            eos_mask = torch.any(tokens == stop_token_id, dim=1)
             eos_mask = eos_mask.unsqueeze(1)
             next_token = torch.argmax(logits, -1).squeeze(
                 0
             )  # remove the extra dimension
             if batch_size > 1:
                 next_token = next_token.unsqueeze(1)  # add the batch dimension
-            next_token = next_token.masked_fill(eos_mask, tokenizer.eos_token_id)
+            next_token = next_token.masked_fill(eos_mask, stop_token_id)
             next_token_embed = model.token_to_embed(next_token)
             if tokens is None:
                 tokens = next_token
@@ -85,10 +87,10 @@ def generate(
             generated = torch.cat(
                 (generated, next_token_embed), dim=1
             )  # Concatenate along the sequence dimension
-            if torch.all(torch.any(tokens == tokenizer.eos_token_id, dim=1)):
+            if torch.all(torch.any(tokens == stop_token_id, dim=1)):
                 break
 
-        tokens = tokens.squeeze().cpu()
+        tokens = tokens.squeeze().cpu()  # TODO: Why is this done on cpu?
         if len(tokens.shape) == 0:
             tokens = tokens.unsqueeze(0)
         if batch_size > 1:

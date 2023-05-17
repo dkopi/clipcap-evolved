@@ -429,16 +429,14 @@ class TrainingModule(pl.LightningModule):
             tokens, mask, images = batch
 
             if batch_idx == 0:
-                for i in range(5):
-                    to_caption = images[i : i + 1]
-                    image_embeds = self.model.get_image_embeds(to_caption)
-                    caption = generate(
-                        self.model,
-                        self.hparams.tokenizer,
-                        image_embeds,
-                        arch=self.hparams.arch,
-                    )
-                    print(f"\ncaption: {caption}\n")
+                image_embeds = self.model.get_image_embeds(images)
+                captions = generate(
+                    self.model,
+                    self.hparams.tokenizer,
+                    image_embeds,
+                    arch=self.hparams.arch,
+                )
+                print(f"\ncaption: {captions}\n")
 
             if batch_idx < self.hparams.eval_batches:
                 scores = evaluate(
@@ -501,7 +499,9 @@ def train_model(
 
     kwargs["gpt_size"] = "-" + kwargs["gpt_size"] if kwargs["gpt_size"] != "" else ""
     if kwargs["arch"] == "mlp" or kwargs["arch"] == "clipcap":
-        tokenizer = GPT2Tokenizer.from_pretrained("gpt2" + kwargs["gpt_size"])
+        tokenizer = GPT2Tokenizer.from_pretrained(
+            "gpt2" + kwargs["gpt_size"], eos_token=kwargs["gpt_stop_token"]
+        )
     elif (
         kwargs["arch"] == "flan-t5"
         or kwargs["arch"] == "flan-mlp"
@@ -623,6 +623,7 @@ def main():
     parser.add_argument("--run_name", default=None)
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--use_unpooled_output", action="store_true")
+    parser.add_argument("--gpt_stop_token", default=".")
     parser.add_argument(
         "--arch",
         default="mlp",
