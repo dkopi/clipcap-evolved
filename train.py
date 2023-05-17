@@ -527,7 +527,6 @@ def train_model(
         annotations_file=val_annotations_file,
         data_dir=val_data_dir,
         prefix_length=kwargs["prefix_length"],
-        # sample_limit=1000,
         clip_processor=clip_processor,
         tokenizer=tokenizer,
     )
@@ -567,14 +566,15 @@ def train_model(
         devices=1,
         max_epochs=kwargs["epochs"],
         callbacks=[
-            # ModelCheckpoint(
-            #     save_weights_only=True, mode="max", monitor="val_acc"
-            # ),  # Save the best checkpoint based on the maximum val_acc recorded. Saves only weights and not optimizer
+            ModelCheckpoint(
+                dirpath=kwargs["checkpoint_path"],
+                save_weights_only=True,
+                mode="min",
+                monitor="val_loss",
+            ),
             LearningRateMonitor("step"),
-            # LearningRateMonitor("epoch"),
             TQDMProgressBar(refresh_rate=100),
         ],
-        # enable_checkpointing=False,
         enable_progress_bar=True,
         logger=wandb_logger,
         log_every_n_steps=100,
@@ -592,9 +592,11 @@ def train_model(
 
     trainer.fit(training_module, train_loader, val_loader)
 
-    # model = CIFARModule.load_from_checkpoint(
-    #     trainer.checkpoint_callback.best_model_path
-    # )  # Load best checkpoint after training
+    print(trainer.checkpoint_callback.best_model_path)
+
+    model = TrainingModule.load_from_checkpoint(
+        trainer.checkpoint_callback.best_model_path
+    )
 
     # Test best model on validation and test set
     # val_result = trainer.test(model, val_loader, verbose=False)

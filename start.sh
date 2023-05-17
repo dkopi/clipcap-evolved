@@ -44,7 +44,7 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/annotations/ca
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --warmup 1 --run_name mlp_small
 # $shared_part --mlp_hidden_size 256 --batch_size 40 --warmup 1 --run_name mlp_small_bs40
 # $shared_part --mlp_hidden_size 3840 --batch_size 40 --no_cosine --warmup 3000 --finetune_lm --warmup_use_steps --run_name mlp_small_nc_bs40_3840_ft
-# $shared_part --mlp_hidden_size 256 --batch_size 40 --no_cosine --warmup 3000 --finetune_lm --warmup_use_steps --run_name mlp_small_nc_bs40_ft
+$shared_part --mlp_hidden_size 256 --batch_size 40 --no_cosine --warmup 3000 --activation tanh --finetune_lm --warmup_use_steps --run_name mlp_small_nc_bs40_ft
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --warmup 1 --direct_proj --run_name mlp_small_proj
 # $shared_part --mlp_hidden_size 512 --batch_size 8 --lr 2e-5 --lora --direct_proj --run_name mlp_small_proj_lora_nw
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --direct_proj --run_name mlp_small_proj_nw
