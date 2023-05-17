@@ -95,16 +95,22 @@ class COCODataset(Dataset):
 
 
 class MLP(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, dropout=0.2):
+    def __init__(
+        self, input_size, hidden_size, output_size, dropout=0.2, activation="relu"
+    ):
         super(MLP, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, output_size)
+        if activation == "relu":
+            self.activation = nn.ReLU()
+        elif activation == "tanh":
+            self.activation = nn.Tanh()
+        elif activation == "leaky":
+            self.activation = nn.LeakyReLU()
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        # todo: try different activations
-        x = self.dropout(x)
-        x = torch.relu(self.fc1(x))
+        x = self.activation(self.fc1(x))
         x = self.dropout(x)
         x = self.fc2(x)
         return x
@@ -124,6 +130,7 @@ class CaptioningModel(nn.Module):
         use_unpooled_output: bool = False,
         architecture: str = "mlp",
         mlp_dropout: float = 0.2,
+        activation: str = "relu",
     ):
         super().__init__()
 
@@ -174,6 +181,7 @@ class CaptioningModel(nn.Module):
                     mlp_hidden_size,
                     lm_input_size,
                     dropout=mlp_dropout,
+                    activation=activation,
                 )
 
     def token_to_embed(self, tokens: torch.Tensor):
@@ -282,19 +290,23 @@ class CaptioningModel(nn.Module):
 
 
 class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
-    def __init__(self, optimizer, warmup, max_iters):
+    def __init__(self, optimizer, warmup, max_iters, no_cosine=False):
         self.warmup = warmup
+        self.no_cosine = no_cosine
         self.max_num_iters = max_iters
         super().__init__(optimizer)
 
     def get_lr(self):
-        lr_factor = self.get_lr_factor(epoch=self.last_epoch)
+        lr_factor = self.get_lr_factor(step=self.last_epoch)
         return [base_lr * lr_factor for base_lr in self.base_lrs]
 
-    def get_lr_factor(self, epoch):
-        lr_factor = 0.5 * (1 + np.cos(np.pi * epoch / self.max_num_iters))
-        if epoch <= self.warmup:
-            lr_factor *= epoch * 1.0 / self.warmup
+    def get_lr_factor(self, step):
+        if self.no_cosine:
+            lr_factor = 1.0
+        else:
+            lr_factor = 0.5 * (1 + np.cos(np.pi * step / self.max_num_iters))
+        if step <= self.warmup:
+            lr_factor *= step * 1.0 / self.warmup
         return lr_factor
 
 
@@ -315,14 +327,8 @@ class TrainingModule(pl.LightningModule):
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
         )
-        self.freeze_target(self.model.clip)
-        if not kwargs["finetune_lm"]:
-            if self.hparams.arch == "flan-t5":
-                self.freeze_target(self.model.lm.decoder)
-            else:
-                self.freeze_target(self.model.lm)
-            if kwargs["lora"]:
-                self.model.lm = self.get_lora_model(self.model.lm, arch)
+
+        self.freeze_model()
 
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
         self.clip_processor = CLIPProcessor.from_pretrained(
@@ -333,9 +339,19 @@ class TrainingModule(pl.LightningModule):
         )
         self.total_params = sum(p.numel() for p in self.model.parameters())
 
-    def freeze_target(self, target):
-        for param in target.parameters():
-            param.requires_grad = False
+    def freeze_model(self, skip_grad=False):
+        self.freeze_target(self.model.clip, skip_grad)
+        if not self.hparams.finetune_lm:
+            self.freeze_target(self.model.lm, skip_grad)
+            if self.hparams.lora:
+                self.model.lm = self.get_lora_model(self.model.lm, self.hparams.arch)
+        elif self.hparams.arch == "flan-t5":
+            self.freeze_target(self.model.lm.decoder, skip_grad)
+
+    def freeze_target(self, target, skip_grad=False):
+        if not skip_grad:
+            for param in target.parameters():
+                param.requires_grad = False
 
         target.eval()
 
@@ -359,7 +375,6 @@ class TrainingModule(pl.LightningModule):
             )
 
         lora_model = get_peft_model(model, lora_config)
-        print("h1")
         lora_model.print_trainable_parameters()
         return lora_model
 
@@ -369,18 +384,19 @@ class TrainingModule(pl.LightningModule):
         images: torch.Tensor,
         mask: Optional[torch.Tensor],
     ):
+        self.freeze_model(True)
         return self.model(tokens, images, mask)
 
     def configure_optimizers(self):
-        # make it more flexible
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.hparams.lr)
         if self.hparams.warmup is not None:
             lr_scheduler = CosineWarmupScheduler(
                 optimizer,
-                # todo: make it equal for whole epochs?
-                warmup=self.hparams.warmup * self.hparams.samples_per_epoch,
+                warmup=self.hparams.warmup
+                if self.hparams.warmup_use_steps
+                else self.hparams.warmup * self.hparams.samples_per_epoch,
                 max_iters=self.hparams.epochs * self.hparams.samples_per_epoch,
-                # optimizer, warmup=self.hparams.warmup, max_iters=self.hparams.max_iters
+                no_cosine=self.hparams.no_cosine,
             )
             return [optimizer], [{"scheduler": lr_scheduler, "interval": "step"}]
         else:
@@ -424,7 +440,6 @@ class TrainingModule(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        # todo: put into eval mode? or is it done automatically?
         with torch.no_grad():
             tokens, mask, images = batch
 
@@ -459,8 +474,6 @@ class TrainingModule(pl.LightningModule):
 def train_model(
     batch_size,
     run_name=None,
-    save_name="default",
-    checkpoint_path="checkpoints",
     find_lr=False,
     **kwargs,
 ):
@@ -471,25 +484,17 @@ def train_model(
     annotations_file = kwargs["annotations_file"]
     val_annotations_file = kwargs["val_annotations_file"]
 
-    if int(os.environ.get("SLURM_RESTART_COUNT", 0)) > 0:
-        with open(os.path.join(checkpoint_path, "last_run_id"), "r") as f:
-            run_id = f.read()
-    else:
-        run_id = wandb.util.generate_id()
+    run_id = wandb.util.generate_id()
+
     wandb_logger = WandbLogger(
         project="clipcap_evolved",
         name=run_name,
-        # entity="clipcap-dl2",
         id=run_id,
         resume="allow",
         log_model=False,
         offline=kwargs["offline"],
     )
     wandb_logger.experiment.config["job_id"] = os.environ.get("SLURM_JOB_ID", None)
-
-    os.makedirs(checkpoint_path, exist_ok=True)
-    with open(os.path.join(checkpoint_path, "last_run_id"), "w") as f:
-        f.write(run_id)
 
     if torch.cuda.is_available():
         device = torch.device("cuda:0")
@@ -521,7 +526,7 @@ def train_model(
         annotations_file=val_annotations_file,
         data_dir=val_data_dir,
         prefix_length=kwargs["prefix_length"],
-        sample_limit=1000,
+        # sample_limit=1000,
         clip_processor=clip_processor,
         tokenizer=tokenizer,
     )
@@ -556,7 +561,7 @@ def train_model(
     wandb_logger.experiment.config["total_params"] = training_module.total_params
 
     trainer = pl.Trainer(
-        default_root_dir=os.path.join(checkpoint_path, save_name),
+        default_root_dir=kwargs["checkpoint_path"],
         accelerator="gpu" if not str(device).startswith("cpu") else "cpu",
         devices=1,
         max_epochs=kwargs["epochs"],
@@ -568,7 +573,7 @@ def train_model(
             # LearningRateMonitor("epoch"),
             TQDMProgressBar(refresh_rate=100),
         ],
-        enable_checkpointing=False,
+        # enable_checkpointing=False,
         enable_progress_bar=True,
         logger=wandb_logger,
         log_every_n_steps=100,
@@ -602,6 +607,7 @@ def train_model(
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--checkpoint_path", default="./checkpoints")
     parser.add_argument(
         "--annotations_file", default="./data/coco/annotations/captions_train2014.json"
     )
@@ -611,16 +617,17 @@ def main():
     )
     parser.add_argument("--data_dir", default="./data/coco/train2014")
     parser.add_argument("--val_data_dir", default="./data/coco/val2014")
-    parser.add_argument("--checkpoint_path", default="./checkpoints")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--save_every", type=int, default=1)
-    parser.add_argument("--prefix_length", type=int, default=8)
+    parser.add_argument("--prefix_length", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--mlp_hidden_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--find_lr", action="store_true")
     parser.add_argument("--run_name", default=None)
     parser.add_argument("--warmup", type=int, default=None)
+    parser.add_argument("--warmup_use_steps", action="store_true")
+    parser.add_argument("--no_cosine", action="store_true")
     parser.add_argument("--use_unpooled_output", action="store_true")
     parser.add_argument(
         "--arch",
@@ -633,10 +640,13 @@ def main():
     parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
     parser.add_argument("--eval_batches", type=int, default=64)
     parser.add_argument("--mlp_dropout", type=float, default=0.0)
+    parser.add_argument(
+        "--activation", type=str, default="tanh", choices=["tanh", "relu", "leaky"]
+    )
     parser.add_argument("--grad_clip", type=float, default=None)
     parser.add_argument("--finetune_lm", action="store_true")
     parser.add_argument("--offline", action="store_true")
-    parser.add_argument("--val_freq", type=int, default=2000)
+    parser.add_argument("--val_freq", type=int, default=None)
     parser.add_argument("--lora", action="store_true")
     parser.add_argument("--direct", action="store_true")
     parser.add_argument("--direct_proj", action="store_true")
