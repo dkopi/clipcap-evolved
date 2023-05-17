@@ -327,7 +327,7 @@ class TrainingModule(pl.LightningModule):
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
         )
-
+        
         self.freeze_model()
 
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
@@ -344,6 +344,8 @@ class TrainingModule(pl.LightningModule):
         if not self.hparams.finetune_lm:
             self.freeze_target(self.model.lm, skip_grad)
             if self.hparams.lora:
+                if self.hparams.arch == "flan-t5":
+                    self.freeze_target(self.model.lm)
                 self.model.lm = self.get_lora_model(self.model.lm, self.hparams.arch)
         elif self.hparams.arch == "flan-t5":
             self.freeze_target(self.model.lm.decoder, skip_grad)

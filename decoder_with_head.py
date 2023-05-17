@@ -113,3 +113,32 @@ class DecoderWithHead(nn.Module):
             decoder_attentions=decoder_outputs.attentions,
             cross_attentions=decoder_outputs.cross_attentions,
         )
+
+    def prepare_inputs_for_generation(
+        self,
+        input_ids,
+        past_key_values=None,
+        attention_mask=None,
+        head_mask=None,
+        decoder_head_mask=None,
+        decoder_attention_mask=None,
+        cross_attn_head_mask=None,
+        use_cache=None,
+        encoder_outputs=None,
+        **kwargs,
+    ):
+        # cut decoder_input_ids if past is used
+        if past_key_values is not None:
+            input_ids = input_ids[:, -1:]
+
+        return {
+            "decoder_input_ids": input_ids,
+            "past_key_values": past_key_values,
+            "encoder_outputs": encoder_outputs,
+            "attention_mask": attention_mask,
+            "head_mask": head_mask,
+            "decoder_head_mask": decoder_head_mask,
+            "decoder_attention_mask": decoder_attention_mask,
+            "cross_attn_head_mask": cross_attn_head_mask,
+            "use_cache": use_cache,
+        }
