@@ -49,11 +49,10 @@ def generate(
     entry_length=50,
     top_p=0.8,  # do we use top_p or temperature?
     temperature=1.0,
-    # stop_token: str = ".", # might need to set dot for gpt2
+    stop_token: str = ".",  # might need to set dot for gpt2
     arch: str = "mlp",  # use 'lm_model'
 ):
     model.eval()
-    stop_token_id = tokenizer.eos_token_id
     batch_size = embed.size(0)
     generated = embed  # TODO: Conditional image "embed"s to encoder input, decoder to special token according to docs
     if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
@@ -61,6 +60,10 @@ def generate(
         generated = model.token_to_embed(
             torch.zeros((batch_size, 1), dtype=torch.long).to(embed.device)
         )
+        stop_token_id = tokenizer.eos_token_id
+    else:
+        stop_token_id = tokenizer.encode(stop_token)[0]
+    eos_token_id = tokenizer.eos_token_id
 
     tokens = torch.zeros((batch_size, 0), dtype=torch.long).to(generated.device)
 
@@ -78,7 +81,7 @@ def generate(
             )  # remove the extra dimension
             if batch_size > 1:
                 next_token = next_token.unsqueeze(1)  # add the batch dimension
-            next_token = next_token.masked_fill(eos_mask, stop_token_id)
+            next_token = next_token.masked_fill(eos_mask, eos_token_id)
             next_token_embed = model.token_to_embed(next_token)
             if tokens is None:
                 tokens = next_token

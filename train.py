@@ -499,9 +499,7 @@ def train_model(
 
     kwargs["gpt_size"] = "-" + kwargs["gpt_size"] if kwargs["gpt_size"] != "" else ""
     if kwargs["arch"] == "mlp" or kwargs["arch"] == "clipcap":
-        tokenizer = GPT2Tokenizer.from_pretrained(
-            "gpt2" + kwargs["gpt_size"], eos_token=kwargs["gpt_stop_token"]
-        )
+        tokenizer = GPT2Tokenizer.from_pretrained("gpt2" + kwargs["gpt_size"])
     elif (
         kwargs["arch"] == "flan-t5"
         or kwargs["arch"] == "flan-mlp"
@@ -623,7 +621,6 @@ def main():
     parser.add_argument("--run_name", default=None)
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--use_unpooled_output", action="store_true")
-    parser.add_argument("--gpt_stop_token", default=".")
     parser.add_argument(
         "--arch",
         default="mlp",
