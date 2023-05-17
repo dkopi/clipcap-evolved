@@ -268,6 +268,8 @@ class TrainingModule(pl.LightningModule):
         )
         self.total_params = sum(p.numel() for p in self.model.parameters())
 
+        self.table = wandb.Table(columns=['steps', 'img1', 'caption 1', 'img2', 'caption 2', 'img3', 'caption 3'])
+
     def freeze_target(self, target):
         for param in target.parameters():
             param.requires_grad = False
@@ -356,13 +358,22 @@ class TrainingModule(pl.LightningModule):
         self.log("train_loss", loss, on_step=True, on_epoch=False)
         return loss
 
+    
+
     def validation_step(self, batch, batch_idx):
         # todo: put into eval mode? or is it done automatically?
         with torch.no_grad():
             tokens, mask, images = batch
 
+            
+            #columns=['steps', 'img1', 'caption 1', 'img2', 'caption 2', 'img3', 'caption 3']
+
+            img1 = wandb.Image(images[0:1])
+            img2 = wandb.Image(images[1:2])
+            img3 = wandb.Image(images[2:3])
+
             if batch_idx == 0:
-                for i in range(5):
+                for i in range(3):
                     to_caption = images[i : i + 1]
                     image_embeds = self.model.get_image_embeds(to_caption)
                     caption = generate(
@@ -372,16 +383,18 @@ class TrainingModule(pl.LightningModule):
                         arch=self.hparams.arch,
                     )
                     print(f"\ncaption: {caption}\n")
+                    if i == 0:
+                        caption1 = caption
+                    elif i == 1:
+                        caption2 = caption
+                    elif i == 2:
+                        caption3 = caption
 
-            if batch_idx < self.hparams.eval_batches:
-                scores = evaluate(
-                    self.model,
-                    self.hparams.tokenizer,
-                    images,
-                    tokens,
-                    arch=self.hparams.arch,
-                )
-                self.log("cider", scores["cider"], prog_bar=True)
+                self.table.add_data(batch_idx, img1, caption1, img2, caption2, img3, caption3)
+
+                #data = [[batch_idx, img1, caption1, img2, caption2, img3, caption3]]
+
+                self.logger.experiment.log({'new_captions': self.table})
 
             loss = self.get_loss(tokens, images, mask)
 
@@ -413,7 +426,7 @@ def train_model(
     wandb_logger = WandbLogger(
         project="clipcap_evolved",
         name=run_name,
-        entity="clipcap-dl2",
+        entity="p-goswami",
         id=run_id,
         resume="allow",
         log_model=False,
@@ -431,6 +444,9 @@ def train_model(
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
+
+    print('Using device:', device)
+    
 
     if kwargs["arch"] == "mlp" or kwargs["arch"] == "clipcap":  # lm_model
         tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
@@ -460,7 +476,7 @@ def train_model(
         shuffle=True,
         drop_last=True,
         # pin_memory=True,
-        # num_workers=16,
+        #num_workers=12,
     )
     val_loader = DataLoader(
         val_set,
@@ -472,6 +488,8 @@ def train_model(
     plugins = []
     if os.environ.get("SLURM_JOB_ID"):
         plugins.append(SLURMEnvironment(requeue_signal=signal.SIGUSR1))
+    
+    
 
     training_module = TrainingModule(
         samples_per_epoch=len(train_loader),
@@ -479,11 +497,13 @@ def train_model(
         clip_processor=clip_processor,
         **kwargs,
     )
+
+
     wandb_logger.experiment.config[
         "trainable_params"
     ] = training_module.trainable_params
     wandb_logger.experiment.config["total_params"] = training_module.total_params
-
+    
     trainer = pl.Trainer(
         default_root_dir=os.path.join(checkpoint_path, save_name),
         accelerator="gpu" if not str(device).startswith("cpu") else "cpu",
@@ -544,7 +564,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--save_every", type=int, default=1)
     parser.add_argument("--prefix_length", type=int, default=8)
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--mlp_hidden_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--find_lr", action="store_true")
@@ -557,7 +577,7 @@ def main():
     parser.add_argument("--grad_clip", type=float, default=None)
     parser.add_argument("--finetune_lm", action="store_true")
     parser.add_argument("--offline", action="store_true")
-    parser.add_argument("--val_freq", type=int, default=1000)
+    parser.add_argument("--val_freq", type=int, default=1)
     parser.add_argument("--lora", action="store_true")
     parser.add_argument("--direct", action="store_true")
 
