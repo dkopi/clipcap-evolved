@@ -95,17 +95,21 @@ class COCODataset(Dataset):
 
 
 class MLP(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size, dropout=0.2):
+    def __init__(
+        self, input_size, hidden_size, output_size, dropout=0.2, activation="relu"
+    ):
         super(MLP, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
         self.fc2 = nn.Linear(hidden_size, output_size)
-        self.dropout = nn.Dropout(dropout)
+        if activation == "relu":
+            self.activation = nn.ReLU()
+        elif activation == "tanh":
+            self.activation = nn.Tanh()
+        elif activation == "leaky":
+            self.activation = nn.LeakyReLU()
 
     def forward(self, x):
-        # todo: try different activations
-        x = self.dropout(x)
-        x = torch.relu(self.fc1(x))
-        x = self.dropout(x)
+        x = self.activation(self.fc1(x))
         x = self.fc2(x)
         return x
 
@@ -124,6 +128,7 @@ class CaptioningModel(nn.Module):
         use_unpooled_output: bool = False,
         architecture: str = "mlp",
         mlp_dropout: float = 0.2,
+        activation: str = "relu",
     ):
         super().__init__()
 
@@ -174,6 +179,7 @@ class CaptioningModel(nn.Module):
                     mlp_hidden_size,
                     lm_input_size,
                     dropout=mlp_dropout,
+                    activation=activation,
                 )
 
     def token_to_embed(self, tokens: torch.Tensor):
@@ -322,7 +328,7 @@ class TrainingModule(pl.LightningModule):
         self.freeze_target(self.model.clip)
         if not kwargs["finetune_lm"]:
             if self.hparams.arch == "flan-t5":
-                self.freeze_target(self.model.lm.encoder)
+                self.freeze_target(self.model.lm.decoder)
             else:
                 self.freeze_target(self.model.lm)
             if kwargs["lora"]:
@@ -622,7 +628,7 @@ def main():
     parser.add_argument("--checkpoint_path", default="./checkpoints")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--save_every", type=int, default=1)
-    parser.add_argument("--prefix_length", type=int, default=8)
+    parser.add_argument("--prefix_length", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--mlp_hidden_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-4)
@@ -643,6 +649,9 @@ def main():
     parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
     parser.add_argument("--eval_batches", type=int, default=64)
     parser.add_argument("--mlp_dropout", type=float, default=0.0)
+    parser.add_argument(
+        "--activation", type=str, default="tanh", choices=["tanh", "relu", "leaky"]
+    )
     parser.add_argument("--grad_clip", type=float, default=None)
     parser.add_argument("--finetune_lm", action="store_true")
     parser.add_argument("--offline", action="store_true")
