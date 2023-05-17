@@ -446,15 +446,14 @@ class TrainingModule(pl.LightningModule):
             tokens, mask, images = batch
 
             if batch_idx == 0:
-                for i in range(5):
-                    to_caption = images[i : i + 1]
-                    image_embeds = self.model.get_image_embeds(to_caption)
-                    caption = generate(
-                        self.model,
-                        self.hparams.tokenizer,
-                        image_embeds,
-                        arch=self.hparams.arch,
-                    )
+                image_embeds = self.model.get_image_embeds(images)
+                captions = generate(
+                    self.model,
+                    self.hparams.tokenizer,
+                    image_embeds,
+                    arch=self.hparams.arch,
+                )
+                for caption in captions:
                     print(f"\ncaption: {caption}\n")
 
             if batch_idx < self.hparams.eval_batches:
