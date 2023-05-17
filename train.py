@@ -436,7 +436,8 @@ class TrainingModule(pl.LightningModule):
                     image_embeds,
                     arch=self.hparams.arch,
                 )
-                print(f"\ncaption: {captions}\n")
+                for caption in captions:
+                    print(f"\ncaption: {caption}\n")
 
             if batch_idx < self.hparams.eval_batches:
                 scores = evaluate(
