@@ -650,7 +650,6 @@ def main():
     parser.add_argument("--nocaps_dir_indomain", default="./data/nocaps/in-domain")
     parser.add_argument("--nocaps_dir_neardomain", default="./data/nocaps/near-domain")
     parser.add_argument("--nocaps_dir_outdomain", default="./data/nocaps/out-domain")
-    parser.add_argument("--checkpoint_path", default="./checkpoints")
     parser.add_argument("--data_dir", default="./data/coco/train2017")
     parser.add_argument("--val_data_dir", default="./data/coco/val2017")
     parser.add_argument("--epochs", type=int, default=10)
