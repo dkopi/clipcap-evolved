@@ -17,7 +17,7 @@ def evaluate(model, tokenizer, images, tokens, arch: str = "mlp"):
     hypothesis = {}
     device = next(model.parameters()).device
     cider = Cider()
-    spice = Spice()
+    #spice = Spice()
 
     with torch.no_grad():
         embeds = model.get_image_embeds(images.to(device))
@@ -32,11 +32,11 @@ def evaluate(model, tokenizer, images, tokens, arch: str = "mlp"):
     references = {i + 1: [token] for i, token in enumerate(decoded_tokens)}
 
     cider_score, _ = cider.compute_score(references, hypothesis)
-    spice_score, _ = spice.compute_score(references, hypothesis)
+    #spice_score, _ = spice.compute_score(references, hypothesis)
 
     return {
         "cider": float(cider_score) * 100,
-        'spice': spice_score
+        #'spice': spice_score
     }
 
 

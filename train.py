@@ -464,7 +464,7 @@ class TrainingModule(pl.LightningModule):
                     arch=self.hparams.arch,
                 )
                 self.log("cider", scores["cider"], prog_bar=True)
-                self.log("spice", scores["spice"], prog_bar=True)
+                #self.log("spice", scores["spice"], prog_bar=True)
 
             loss = self.get_loss(tokens, images, mask)
 
@@ -666,11 +666,11 @@ def main():
     parser.add_argument("--use_unpooled_output", action="store_true")
     parser.add_argument(
         "--arch",
-        default="mlp",
+        default="flan-t5",
         choices=["mlp", "clipcap", "flan-t5", "flan-mlp", "flan-transformer"],
     )
     parser.add_argument(
-        "--flan_size", default="base", choices=["small", "base", "large", "xl", "xxl"]
+        "--flan_size", default="small", choices=["small", "base", "large", "xl", "xxl"]
     )
     parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
     parser.add_argument("--eval_batches", type=int, default=64)

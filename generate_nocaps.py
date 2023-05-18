@@ -14,6 +14,38 @@ def download_json(url, folder):
         with open(filepath, 'w') as f:
             f.write(response.text)
 
+def split_json_by_domain(data):
+    in_domain = {"licenses": data["licenses"], "info": data["info"], "images": [], "annotations": []}
+    near_domain = {"licenses": data["licenses"], "info": data["info"], "images": [], "annotations": []}
+    out_domain = {"licenses": data["licenses"], "info": data["info"], "images": [], "annotations": []}
+
+    for image in data["images"]:
+        if image["domain"] == "in-domain":
+            in_domain["images"].append(image)
+        elif image["domain"] == "near-domain":
+            near_domain["images"].append(image)
+        elif image["domain"] == "out-domain":
+            out_domain["images"].append(image)
+
+    for annotation in data["annotations"]:
+        if any(image["id"] == annotation["image_id"] for image in in_domain["images"]):
+            in_domain["annotations"].append(annotation)
+        elif any(image["id"] == annotation["image_id"] for image in near_domain["images"]):
+            near_domain["annotations"].append(annotation)
+        elif any(image["id"] == annotation["image_id"] for image in out_domain["images"]):
+            out_domain["annotations"].append(annotation)
+
+    if not os.path.exists("data/nocaps/annotations/in-domain.json"):
+        with open("data/nocaps/annotations/in-domain.json", "w") as f:
+            json.dump(in_domain, f)
+
+    if not os.path.exists("data/nocaps/annotations/near-domain.json"):
+        with open("data/nocaps/annotations/near-domain.json", "w") as f:
+            json.dump(near_domain, f)
+
+    if not os.path.exists("data/nocaps/annotations/out-domain.json"):
+        with open("data/nocaps/annotations/out-domain.json", "w") as f:
+            json.dump(out_domain, f)
 
 def get_captions(annotation_file):
     with io.open(annotation_file, 'r', encoding='utf-8') as f:
@@ -84,6 +116,9 @@ def download_dataset(annotation_file: str ,url_list_file: str = "data/nocaps/ann
             shutil.move(image_path, new_image_path)
         else:
             print(f"Error: File {image_path} does not exist")
+
+    #at the end, creating 3 different json annotations files
+    split_json_by_domain(data)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
