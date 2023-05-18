@@ -2,6 +2,7 @@ import io
 import os
 import json
 import img2dataset
+import shutil
 
 # Path to annotations file
 annotation_file = 'data/nocaps/annotations/nocaps_val_4500_captions.json'
@@ -27,6 +28,7 @@ def write_urls(url_list):
     with open('data/nocaps/annotations/myimglist.txt', 'w') as f:
         for url in url_list:
             f.write(url + '\n')
+
 
 def download_dataset(url_list_file: str = "data/nocaps/annotations/myimglist.txt", output_folder: str = "data/nocaps"):
     
@@ -54,6 +56,21 @@ def download_dataset(url_list_file: str = "data/nocaps/annotations/myimglist.txt
             os.remove(jsdel)
       else:
             print(f"Error: File {src} does not exist")
+
+    #and finally creating 3 different folders, in-domain, near-domain and out-domain
+    path = 'data/nocaps/'
+    imagepath= 'data/nocaps/00000/'
+    with open(annotation_file, 'r') as f:
+        data = json.load(f)
+    images = data['images']
+    for image in images:
+        domain = image['domain']
+        domain_folder = path + '/' + domain
+        if not os.path.exists(domain_folder):
+            os.makedirs(domain_folder)
+        image_path = os.path.join(imagepath, image['file_name'])
+        new_image_path = os.path.join(domain_folder, image['file_name'])
+        shutil.move(image_path, new_image_path)
 
 if __name__ == '__main__':
     download_dataset()

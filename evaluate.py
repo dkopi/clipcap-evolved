@@ -3,14 +3,13 @@ import torch.nn.functional as nnf
 from pycocotools.coco import COCO
 import pycocoevalcap
 from pycocoevalcap.cider.cider import Cider
-
-# from pycocoevalcap.spice.spice import Spice
+from pycocoevalcap.spice.spice import Spice
 import PIL
 from PIL import Image
 import io
 import os
 
-
+#todo: verify if the references takes into account the 0 different captions and hypothesis are correct
 # todo: optimize it, generate captions in batches
 def evaluate(model, tokenizer, images, tokens, arch: str = "mlp"):
     model.eval()
@@ -18,7 +17,7 @@ def evaluate(model, tokenizer, images, tokens, arch: str = "mlp"):
     hypothesis = {}
     device = next(model.parameters()).device
     cider = Cider()
-    # spice = Spice()
+    spice = Spice()
 
     with torch.no_grad():
         # (batch_size, dim1, dim2)
@@ -32,11 +31,11 @@ def evaluate(model, tokenizer, images, tokens, arch: str = "mlp"):
             references[i] = [tokenizer.decode(tokens[i].cpu().numpy())]
 
     cider_score, _ = cider.compute_score(references, hypothesis)
-    # spice_score, _ = spice.compute_score(references, hypothesis)
+    spice_score, _ = spice.compute_score(references, hypothesis)
 
     return {
         "cider": float(cider_score) * 100,
-        # 'spice': spice_score
+        'spice': spice_score
     }
 
 

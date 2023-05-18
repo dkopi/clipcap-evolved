@@ -32,7 +32,6 @@ from decoder_with_head import DecoderWithHead
 from evaluate import generate, evaluate
 from peft import LoraConfig, get_peft_model
 
-
 class COCODataset(Dataset):
     def __init__(
         self,
@@ -429,9 +428,8 @@ class TrainingModule(pl.LightningModule):
             tokens, mask, images = batch
 
             if batch_idx == 0:
-                for i in range(5):
-                    to_caption = images[i : i + 1]
-                    image_embeds = self.model.get_image_embeds(to_caption)
+                for image in images:
+                    image_embeds = self.model.get_image_embeds(image)
                     caption = generate(
                         self.model,
                         self.hparams.tokenizer,
@@ -449,6 +447,7 @@ class TrainingModule(pl.LightningModule):
                     arch=self.hparams.arch,
                 )
                 self.log("cider", scores["cider"], prog_bar=True)
+                self.log("spice", scores["spice"], prog_bar=True)
 
             loss = self.get_loss(tokens, images, mask)
 
@@ -469,6 +468,10 @@ def train_model(
 
     data_dir = kwargs["data_dir"]
     val_data_dir = kwargs["val_data_dir"]
+    nocaps_dir_indomain = kwargs["nocaps_dir_indomain"]
+    nocaps_dir_neardomain = kwargs["nocaps_dir_neardomain"]
+    nocaps_dir_outdomain = kwargs["nocaps_dir_outdomain"]
+    nocaps_annotations_file = kwargs["nocaps_annotations_file"]
     annotations_file = kwargs["annotations_file"]
     val_annotations_file = kwargs["val_annotations_file"]
 
@@ -526,6 +529,13 @@ def train_model(
         clip_processor=clip_processor,
         tokenizer=tokenizer,
     )
+    nocaps_set = COCODataset(
+        annotations_file=nocaps_annotations_file,
+        data_dir=nocaps_dir_indomain,
+        prefix_length=kwargs["prefix_length"],
+        clip_processor=clip_processor,
+        tokenizer=tokenizer
+    )
     train_loader = DataLoader(
         train_set,
         batch_size=batch_size,
@@ -536,6 +546,12 @@ def train_model(
     )
     val_loader = DataLoader(
         val_set,
+        batch_size=batch_size,
+        drop_last=False,
+        num_workers=16,
+    )
+    nocaps_loader = DataLoader(
+        nocaps_set,
         batch_size=batch_size,
         drop_last=False,
         num_workers=16,
@@ -594,6 +610,12 @@ def train_model(
     # Test best model on validation and test set
     # val_result = trainer.test(model, val_loader, verbose=False)
     # test_result = trainer.test(model, test_loader, verbose=False)
+    
+    #Test best model on nocaps set
+    nocaps_result = trainer.test(training_module, nocaps_loader, verbose=False)
+
+    result = {"nocaps": nocaps_result[0]["Cider"]}
+
     # result = {"test": test_result[0]["test_acc"], "val": val_result[0]["test_acc"]}
 
     wandb.finish()
@@ -610,6 +632,13 @@ def main():
         "--val_annotations_file",
         default="./data/coco/annotations/captions_val2014.json",
     )
+    parser.add_argument(
+        "--nocaps_annotations_file",
+        default="./data/nocaps/annotations/nocaps_val_4500_captions.json",
+    )
+    parser.add_argument("--nocaps_dir_indomain", default="./data/nocaps/in-domain")
+    parser.add_argument("--nocaps_dir_neardomain", default="./data/nocaps/near-domain")
+    parser.add_argument("--nocaps_dir_outdomain", default="./data/nocaps/out-domain")
     parser.add_argument("--data_dir", default="./data/coco/train2014")
     parser.add_argument("--val_data_dir", default="./data/coco/val2014")
     parser.add_argument("--checkpoint_path", default="./checkpoints")
