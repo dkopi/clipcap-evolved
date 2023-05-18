@@ -327,7 +327,7 @@ class TrainingModule(pl.LightningModule):
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
         )
-        
+
         self.freeze_model()
 
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
@@ -343,7 +343,7 @@ class TrainingModule(pl.LightningModule):
         self.freeze_target(self.model.clip, skip_grad)
         if not self.hparams.finetune_lm:
             self.freeze_target(self.model.lm, skip_grad)
-            if self.hparams.lora:
+            if self.hparams.lora and not skip_grad:
                 if self.hparams.arch == "flan-t5":
                     self.freeze_target(self.model.lm)
                 self.model.lm = self.get_lora_model(self.model.lm, self.hparams.arch)
@@ -613,14 +613,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_path", default="./checkpoints")
     parser.add_argument(
-        "--annotations_file", default="./data/coco/annotations/captions_train2014.json"
+        "--annotations_file", default="./data/coco/annotations/captions_train2017.json"
     )
     parser.add_argument(
         "--val_annotations_file",
-        default="./data/coco/annotations/captions_val2014.json",
+        default="./data/coco/annotations/captions_val2017.json",
     )
-    parser.add_argument("--data_dir", default="./data/coco/train2014")
-    parser.add_argument("--val_data_dir", default="./data/coco/val2014")
+    parser.add_argument("--data_dir", default="./data/coco/train2017")
+    parser.add_argument("--val_data_dir", default="./data/coco/val2017")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--save_every", type=int, default=1)
     parser.add_argument("--prefix_length", type=int, default=10)
