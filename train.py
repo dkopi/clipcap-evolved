@@ -327,7 +327,7 @@ class TrainingModule(pl.LightningModule):
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
         )
-        
+
         self.freeze_model()
 
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
@@ -343,7 +343,7 @@ class TrainingModule(pl.LightningModule):
         self.freeze_target(self.model.clip, skip_grad)
         if not self.hparams.finetune_lm:
             self.freeze_target(self.model.lm, skip_grad)
-            if self.hparams.lora:
+            if self.hparams.lora and not skip_grad:
                 if self.hparams.arch == "flan-t5":
                     self.freeze_target(self.model.lm)
                 self.model.lm = self.get_lora_model(self.model.lm, self.hparams.arch)
@@ -456,7 +456,10 @@ class TrainingModule(pl.LightningModule):
                 for caption in captions:
                     print(f"\ncaption: {caption}\n")
 
-            if batch_idx < self.hparams.eval_batches:
+            if (
+                self.hparams.eval_batches == None
+                or batch_idx < self.hparams.eval_batches
+            ):
                 scores = evaluate(
                     self.model,
                     self.hparams.tokenizer,
@@ -613,14 +616,14 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_path", default="./checkpoints")
     parser.add_argument(
-        "--annotations_file", default="./data/coco/annotations/captions_train2014.json"
+        "--annotations_file", default="./data/coco/annotations/captions_train2017.json"
     )
     parser.add_argument(
         "--val_annotations_file",
-        default="./data/coco/annotations/captions_val2014.json",
+        default="./data/coco/annotations/captions_val2017.json",
     )
-    parser.add_argument("--data_dir", default="./data/coco/train2014")
-    parser.add_argument("--val_data_dir", default="./data/coco/val2014")
+    parser.add_argument("--data_dir", default="./data/coco/train2017")
+    parser.add_argument("--val_data_dir", default="./data/coco/val2017")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--save_every", type=int, default=1)
     parser.add_argument("--prefix_length", type=int, default=10)
@@ -642,7 +645,7 @@ def main():
         "--flan_size", default="base", choices=["small", "base", "large", "xl", "xxl"]
     )
     parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
-    parser.add_argument("--eval_batches", type=int, default=64)
+    parser.add_argument("--eval_batches", type=int, default=None)
     parser.add_argument("--mlp_dropout", type=float, default=0.0)
     parser.add_argument(
         "--activation", type=str, default="tanh", choices=["tanh", "relu", "leaky"]
