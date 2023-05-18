@@ -3,9 +3,17 @@ import os
 import json
 import img2dataset
 import shutil
+import argparse
+import requests
 
-# Path to annotations file
-annotation_file = 'data/nocaps/annotations/nocaps_val_4500_captions.json'
+def download_json(url, folder):
+    filename = url.split('/')[-1]
+    filepath = folder + '/' + filename
+    if not os.path.exists(filepath):
+        response = requests.get(url)
+        with open(filepath, 'w') as f:
+            f.write(response.text)
+
 
 def get_captions(annotation_file):
     with io.open(annotation_file, 'r', encoding='utf-8') as f:
@@ -30,8 +38,9 @@ def write_urls(url_list):
             f.write(url + '\n')
 
 
-def download_dataset(url_list_file: str = "data/nocaps/annotations/myimglist.txt", output_folder: str = "data/nocaps"):
+def download_dataset(annotation_file: str ,url_list_file: str = "data/nocaps/annotations/myimglist.txt", output_folder: str = "data/nocaps"):
     
+    download_json("https://nocaps.s3.amazonaws.com/nocaps_val_4500_captions.json", "data/nocaps/annotations")
     write_urls(get_images_url(annotation_file))
 
     img2dataset.download(
@@ -51,6 +60,7 @@ def download_dataset(url_list_file: str = "data/nocaps/annotations/myimglist.txt
       src = f'data/nocaps/00000/{i:09d}.jpg'
       jsdel= f'data/nocaps/00000/{i:09d}.json'
       dst = f'data/nocaps/00000/{filename}.jpg'
+      print(src, dst)
       if os.path.exists(src):
             os.rename(src, dst)
             os.remove(jsdel)
@@ -58,8 +68,8 @@ def download_dataset(url_list_file: str = "data/nocaps/annotations/myimglist.txt
             print(f"Error: File {src} does not exist")
 
     #and finally creating 3 different folders, in-domain, near-domain and out-domain
-    path = 'data/nocaps/'
-    imagepath= 'data/nocaps/00000/'
+    path = 'data/nocaps'
+    imagepath= 'data/nocaps/00000'
     with open(annotation_file, 'r') as f:
         data = json.load(f)
     images = data['images']
@@ -68,9 +78,24 @@ def download_dataset(url_list_file: str = "data/nocaps/annotations/myimglist.txt
         domain_folder = path + '/' + domain
         if not os.path.exists(domain_folder):
             os.makedirs(domain_folder)
-        image_path = os.path.join(imagepath, image['file_name'])
-        new_image_path = os.path.join(domain_folder, image['file_name'])
-        shutil.move(image_path, new_image_path)
+        image_path = imagepath  + '/' + image['file_name']
+        new_image_path = domain_folder  + '/' + image['file_name']
+        if os.path.exists(image_path):
+            shutil.move(image_path, new_image_path)
+        else:
+            print(f"Error: File {image_path} does not exist")
 
 if __name__ == '__main__':
-    download_dataset()
+    parser = argparse.ArgumentParser()
+    # Path to annotations file
+    parser.add_argument("--annotation_file", default='data/nocaps/annotations/nocaps_val_4500_captions.json')
+    args = parser.parse_args()
+
+    print("======= args =======")
+    for k, v in vars(args).items():
+        print(f"{k}: {v}")
+    print("====================")
+
+    annotation_file = args.annotation_file
+
+    download_dataset(annotation_file)
