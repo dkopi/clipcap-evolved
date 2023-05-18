@@ -456,7 +456,10 @@ class TrainingModule(pl.LightningModule):
                 for caption in captions:
                     print(f"\ncaption: {caption}\n")
 
-            if batch_idx < self.hparams.eval_batches:
+            if (
+                self.hparams.eval_batches == None
+                or batch_idx < self.hparams.eval_batches
+            ):
                 scores = evaluate(
                     self.model,
                     self.hparams.tokenizer,
@@ -642,7 +645,7 @@ def main():
         "--flan_size", default="base", choices=["small", "base", "large", "xl", "xxl"]
     )
     parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
-    parser.add_argument("--eval_batches", type=int, default=64)
+    parser.add_argument("--eval_batches", type=int, default=None)
     parser.add_argument("--mlp_dropout", type=float, default=0.0)
     parser.add_argument(
         "--activation", type=str, default="tanh", choices=["tanh", "relu", "leaky"]
