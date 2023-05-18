@@ -423,12 +423,13 @@ class TrainingModule(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        # todo: put into eval mode? or is it done automatically?
+        # todo: put into eval mode? or is it done automatically? Answer : no need to put eval mode with lighning
         with torch.no_grad():
             tokens, mask, images = batch
 
             if batch_idx == 0:
                 for image in images:
+                    print(f"\nimage: {image}\n")
                     image_embeds = self.model.get_image_embeds(image)
                     caption = generate(
                         self.model,
@@ -612,7 +613,8 @@ def train_model(
     # test_result = trainer.test(model, test_loader, verbose=False)
     
     #Test best model on nocaps set
-    nocaps_result = trainer.test(training_module, nocaps_loader, verbose=False)
+    print("testing on nocaps set")
+    nocaps_result = trainer.test(nocaps_loader, verbose=False)
 
     result = {"nocaps": nocaps_result[0]["Cider"]}
 
