@@ -708,4 +708,5 @@ def main():
 
 
 if __name__ == "__main__":
+    print("1 Starting training just to test if everything works")
     main()

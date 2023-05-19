@@ -10,13 +10,15 @@
 #SBATCH --output=slurm_output_%A.out
 #SBATCH --error=slurm-%A.err
 #SBATCH --data_dir $TMPDIR
+#SBATCH --mail-type=BEGIN,END
+#SBATCH --mail-user=tpelletreau@ensc.fr
 
 module purge
 module load 2021
 module load Anaconda3/2021.05
 
 # Your job starts in the directory where you call sbatch
-cd $HOME/code/clipcap-evolved-1
+#cd $HOME/code/clipcap-evolved-1
 # Activate your environment
 source activate dl2022
 # Run your code
