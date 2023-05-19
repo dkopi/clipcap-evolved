@@ -346,7 +346,11 @@ class TrainingModule(pl.LightningModule):
             if self.hparams.lora and not skip_grad:
                 if self.hparams.arch == "flan-t5":
                     self.freeze_target(self.model.lm)
-                self.model.lm = self.get_lora_model(self.model.lm, self.hparams.arch)
+                self.model.lm = self.get_lora_model(self.model.lm,
+                                                    self.hparams.arch,
+                                                    self.hparams.lora_target_modules,
+                                                    self.hparams.lora_rank,
+                                                    self.hparams.lora_alpha)
         elif self.hparams.arch == "flan-t5":
             self.freeze_target(self.model.lm.decoder, skip_grad)
 
@@ -357,20 +361,36 @@ class TrainingModule(pl.LightningModule):
 
         target.eval()
 
-    def get_lora_model(self, model, arch, lora_config=None):
+    def get_lora_model(self, model, arch, lora_target_modules, lora_rank, lora_alpha, lora_config=None):
         if not lora_config:
             if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
-                target_modules = ["q", "v"]
+                if "all" in lora_target_modules:
+                    target_modules = ["q", "v", "k", "o", "wi_0", "wi_1", "wo", "lm_head"]
+                    print("Using all config for FLAN with ", target_modules)
+                elif "best_config" in lora_target_modules:
+                    target_modules = ["q","v"]
+                    print("Using best config for FLAN with ", target_modules)
+                else:
+                    target_modules = lora_target_modules
+
             elif arch == "clipcap" or arch == "mlp":
-                target_modules = ["c_attn", "c_proj", "c_fc", "lm_head"]
+                if "all" in lora_target_modules:
+                    target_modules = ["c_attn", "c_proj", "c_fc", "lm_head"]
+                    print("Using all config for gpt with ", target_modules)
+                elif "best_config" in lora_target_modules:
+                    target_modules = ["c_attn", "c_proj", "c_fc", "lm_head"]
+                    print("Using best config for gpt with ", target_modules)
+                else:
+                    target_modules = lora_target_modules
+
             else:
                 raise ValueError(f"Unknown architecture: {arch}")
 
             lora_config = LoraConfig(
                 peft_type="LORA",
                 task_type="CAUSAL_LM",
-                r=4,
-                lora_alpha=32,
+                r=lora_rank,
+                lora_alpha=lora_alpha,
                 target_modules=target_modules,
                 lora_dropout=0.01,
                 fan_in_fan_out=True,
@@ -655,6 +675,9 @@ def main():
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--val_freq", type=int, default=None)
     parser.add_argument("--lora", action="store_true")
+    parser.add_argument("--lora_target_modules", nargs="*", default=("best_config") )
+    parser.add_argument("--lora_rank", type=int, default=4)
+    parser.add_argument("--lora_alpha", type=float, default=32)
     parser.add_argument("--direct", action="store_true")
     parser.add_argument("--direct_proj", action="store_true")
 
