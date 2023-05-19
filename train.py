@@ -475,6 +475,11 @@ class TrainingModule(pl.LightningModule):
                 )
                 for caption in captions:
                     print(f"\ncaption: {caption}\n")
+                self.logger.log_image(
+                    key="Generated Captions",
+                    images=list(torch.split(images, 1, 0))[:5],
+                    caption=captions[:5],
+                )
 
             if (
                 self.hparams.eval_batches == None
