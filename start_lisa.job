@@ -1,14 +1,15 @@
 #!/bin/bash
 
-#SBATCH --partition=shared
-#SBATCH --gres=gpu:0
-#SBATCH --job-name=ExampleJob
+#SBATCH --partition=gpu_titanrtx_shared_course
+#SBATCH --gres=gpu:1
+#SBATCH -N 1
+#SBATCH --job-name=nocaps
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=3
 #SBATCH --time=01:00:00
 #SBATCH --mem=32000M
 #SBATCH --output=slurm_output_%A.out
 #SBATCH --error=slurm-%A.err
+#SBATCH --data_dir $TMPDIR
 
 module purge
 module load 2021
