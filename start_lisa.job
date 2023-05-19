@@ -9,7 +9,6 @@
 #SBATCH --mem=32000M
 #SBATCH --output=slurm_output_%A.out
 #SBATCH --error=slurm-%A.err
-#SBATCH --data_dir $TMPDIR
 #SBATCH --mail-type=BEGIN,END
 #SBATCH --mail-user=tpelletreau@ensc.fr
 
