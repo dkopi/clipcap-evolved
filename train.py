@@ -327,6 +327,7 @@ class TrainingModule(pl.LightningModule):
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
         )
+        self.test_dataset = "none"
 
         self.freeze_model()
 
@@ -500,6 +501,17 @@ class TrainingModule(pl.LightningModule):
             self.log("trainable_params", float(self.trainable_params))
             self.log("total_params", float(self.total_params))
 
+    def test_step(self, batch, batch_idx):
+        tokens, mask, images = batch
+        scores = evaluate(
+            self.model,
+            self.hparams.tokenizer,
+            images,
+            tokens,
+            arch=self.hparams.arch,
+        )
+        self.log(f"{self.test_dataset}_cider", scores["cider"])
+
 
 def train_model(
     batch_size,
@@ -511,6 +523,10 @@ def train_model(
 
     data_dir = kwargs["data_dir"]
     val_data_dir = kwargs["val_data_dir"]
+    nocaps_dir_indomain = kwargs["nocaps_dir_indomain"]
+    nocaps_dir_neardomain = kwargs["nocaps_dir_neardomain"]
+    nocaps_dir_outdomain = kwargs["nocaps_dir_outdomain"]
+    nocaps_annotations_file = kwargs["nocaps_annotations_file"]
     annotations_file = kwargs["annotations_file"]
     val_annotations_file = kwargs["val_annotations_file"]
 
@@ -559,6 +575,21 @@ def train_model(
         clip_processor=clip_processor,
         tokenizer=tokenizer,
     )
+    train_set = COCODataset(
+        annotations_file="./data/nocaps/annotations/near-domain.json",
+        data_dir="./data/nocaps/near-domain",
+        prefix_length=kwargs["prefix_length"],
+        clip_processor=clip_processor,
+        tokenizer=tokenizer
+    )
+    val_set = COCODataset(
+        annotations_file="./data/nocaps/annotations/out-domain.json",
+        data_dir="./data/nocaps/out-domain",
+        prefix_length=kwargs["prefix_length"],
+        clip_processor=clip_processor,
+        tokenizer=tokenizer
+    )
+
     train_loader = DataLoader(
         train_set,
         batch_size=batch_size,
@@ -620,17 +651,36 @@ def train_model(
         tuner.lr_find(training_module, train_loader, val_loader)
 
     trainer.fit(training_module, train_loader, val_loader)
-
-    print(trainer.checkpoint_callback.best_model_path)
+    print(f"best model: {trainer.checkpoint_callback.best_model_path}")
 
     model = TrainingModule.load_from_checkpoint(
-        trainer.checkpoint_callback.best_model_path
+        trainer.checkpoint_callback.best_model_path,
     )
 
-    # Test best model on validation and test set
-    # val_result = trainer.test(model, val_loader, verbose=False)
-    # test_result = trainer.test(model, test_loader, verbose=False)
-    # result = {"test": test_result[0]["test_acc"], "val": val_result[0]["test_acc"]}
+    print("final evaluation...")
+
+
+    def test_model(model, dataset_name, annotations_file_path, dir_path):
+        dataset = COCODataset(
+            annotations_file=annotations_file_path,
+            data_dir=dir_path,
+            prefix_length=kwargs["prefix_length"],
+            clip_processor=clip_processor,
+            tokenizer=tokenizer
+        )
+        loader = DataLoader(
+            dataset,
+            batch_size=128,
+            drop_last=False,
+            num_workers=16,
+        )
+        model.test_dataset = dataset_name
+        trainer.test(model, loader)
+
+    test_model(model, "coco", val_annotations_file, val_data_dir)
+    test_model(model, "nocaps_near", os.path.join(kwargs["nocaps_root"], "annotations/near-domain.json"), os.path.join(kwargs["nocaps_root"], "near-domain"))
+    test_model(model, "nocaps_out", os.path.join(kwargs["nocaps_root"], "annotations/out-domain.json"), os.path.join(kwargs["nocaps_root"], "out-domain"))
+    test_model(model, "nocaps_in", os.path.join(kwargs["nocaps_root"], "annotations/in-domain.json"), os.path.join(kwargs["nocaps_root"], "in-domain"))
 
     wandb.finish()
 
@@ -647,6 +697,7 @@ def main():
         "--val_annotations_file",
         default="./data/coco/annotations/captions_val2017.json",
     )
+    parser.add_argument("--nocaps_root", default="./data/nocaps")
     parser.add_argument("--data_dir", default="./data/coco/train2017")
     parser.add_argument("--val_data_dir", default="./data/coco/val2017")
     parser.add_argument("--epochs", type=int, default=10)

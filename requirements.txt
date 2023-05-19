@@ -6,3 +6,4 @@ wandb
 sentencepiece
 git+https://github.com/salaniz/pycocoevalcap.git
 peft
+img2dataset
