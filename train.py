@@ -480,7 +480,7 @@ class TrainingModule(pl.LightningModule):
             tokens, mask, images = batch
 
             if batch_idx == 0:
-                image_embeds = self.model.get_image_embeds(images)
+                image_embeds = self.model.get_image_embeds(images[:5])
                 captions = generate(
                     self.model,
                     self.hparams.tokenizer,
@@ -491,8 +491,8 @@ class TrainingModule(pl.LightningModule):
                     print(f"\ncaption: {caption}\n")
                 self.logger.log_image(
                     key="Generated Captions",
-                    images=list(torch.split(images, 1, 0))[:5],
-                    caption=captions[:5],
+                    images=list(torch.split(images[:5], 1, 0)),
+                    caption=captions,
                 )
 
             if (
@@ -529,7 +529,7 @@ class TrainingModule(pl.LightningModule):
                 print(f"\ncaption: {caption}\n")
             self.logger.log_image(
                 key="Generated Captions",
-                images=list(torch.split(images, 1, 0))[:5],
+                images=list(torch.split(images[:5], 1, 0)),
                 caption=captions,
             )
 
@@ -613,7 +613,7 @@ def train_model(
     )
     val_loader = DataLoader(
         val_set,
-        batch_size=batch_size,
+        batch_size=128,
         drop_last=False,
         num_workers=16,
     )

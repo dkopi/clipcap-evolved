@@ -6,20 +6,40 @@ import shutil
 import argparse
 import requests
 
+
 def download_json(url, folder):
-    filename = url.split('/')[-1]
+    filename = url.split("/")[-1]
     filepath = os.path.join(folder, filename)
     if not os.path.exists(filepath):
         response = requests.get(url)
         if not os.path.exists(folder):
             os.makedirs(folder)
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             f.write(response.text)
+    else:
+        print(f"File {filename} already exists.")
+        exit(0)
+
 
 def split_json_by_domain(data, root_dir):
-    in_domain = {"licenses": data["licenses"], "info": data["info"], "images": [], "annotations": []}
-    near_domain = {"licenses": data["licenses"], "info": data["info"], "images": [], "annotations": []}
-    out_domain = {"licenses": data["licenses"], "info": data["info"], "images": [], "annotations": []}
+    in_domain = {
+        "licenses": data["licenses"],
+        "info": data["info"],
+        "images": [],
+        "annotations": [],
+    }
+    near_domain = {
+        "licenses": data["licenses"],
+        "info": data["info"],
+        "images": [],
+        "annotations": [],
+    }
+    out_domain = {
+        "licenses": data["licenses"],
+        "info": data["info"],
+        "images": [],
+        "annotations": [],
+    }
 
     # Creating a dictionary for fast lookup
     image_id_to_domain = {}
@@ -46,39 +66,45 @@ def split_json_by_domain(data, root_dir):
         if not os.path.exists(filepath):
             with open(filepath, "w") as f:
                 json.dump(data, f)
-    
+
     save_json(in_domain, "in-domain")
     save_json(near_domain, "near-domain")
     save_json(out_domain, "out-domain")
 
 
 def get_captions(annotation_file):
-    with io.open(annotation_file, 'r', encoding='utf-8') as f:
-        annotations = json.load(f)['annotations']
+    with io.open(annotation_file, "r", encoding="utf-8") as f:
+        annotations = json.load(f)["annotations"]
     captions = []
     for annotation in annotations:
-        captions.append(annotation['caption'])
+        captions.append(annotation["caption"])
     return captions
 
+
 def get_images_url(annotation_file):
-    with io.open(annotation_file, 'r', encoding='utf-8') as f:
-        images = json.load(f)['images']
+    with io.open(annotation_file, "r", encoding="utf-8") as f:
+        images = json.load(f)["images"]
     images_url = []
     for image in images:
-        images_url.append(image['coco_url'])
+        images_url.append(image["coco_url"])
     return images_url
 
-#We need a txt file in order to use the img2dataset package
+
+# We need a txt file in order to use the img2dataset package
 def write_urls(url_list, filepath):
-    with open(filepath, 'w') as f:
+    with open(filepath, "w") as f:
         for url in url_list:
-            f.write(url + '\n')
+            f.write(url + "\n")
+
 
 def download_dataset(annotation_file, root_dir):
     url_list_file = os.path.join(root_dir, "annotations", "myimglist.txt")
     output_folder = root_dir
 
-    download_json("https://nocaps.s3.amazonaws.com/nocaps_val_4500_captions.json", os.path.join(root_dir, "annotations"))
+    download_json(
+        "https://nocaps.s3.amazonaws.com/nocaps_val_4500_captions.json",
+        os.path.join(root_dir, "annotations"),
+    )
     write_urls(get_images_url(annotation_file), url_list_file)
 
     img2dataset.download(
@@ -91,13 +117,13 @@ def download_dataset(annotation_file, root_dir):
 
     urls = get_images_url(annotation_file)
 
-    #renaming the images if they don't have the proper name
+    # renaming the images if they don't have the proper name
     for i, url in enumerate(urls):
         url = url.strip()
-        filename = os.path.splitext(url.split('/')[-1])[0]
-        src = os.path.join(root_dir, '00000', f'{i:09d}.jpg')
-        jsdel = os.path.join(root_dir, '00000', f'{i:09d}.json')
-        dst = os.path.join(root_dir, '00000', f'{filename}.jpg')
+        filename = os.path.splitext(url.split("/")[-1])[0]
+        src = os.path.join(root_dir, "00000", f"{i:09d}.jpg")
+        jsdel = os.path.join(root_dir, "00000", f"{i:09d}.json")
+        dst = os.path.join(root_dir, "00000", f"{filename}.jpg")
         print(src, dst)
         if os.path.exists(src):
             os.rename(src, dst)
@@ -105,29 +131,32 @@ def download_dataset(annotation_file, root_dir):
         else:
             print(f"Error: File {src} does not exist")
 
-    #and finally creating 3 different folders, in-domain, near-domain and out-domain
-    with open(annotation_file, 'r') as f:
+    # and finally creating 3 different folders, in-domain, near-domain and out-domain
+    with open(annotation_file, "r") as f:
         data = json.load(f)
-    images = data['images']
+    images = data["images"]
     for image in images:
-        domain = image['domain']
+        domain = image["domain"]
         domain_folder = os.path.join(root_dir, domain)
         if not os.path.exists(domain_folder):
             os.makedirs(domain_folder)
-        image_path = os.path.join(root_dir, '00000', image['file_name'])
-        new_image_path = os.path.join(domain_folder, image['file_name'])
+        image_path = os.path.join(root_dir, "00000", image["file_name"])
+        new_image_path = os.path.join(domain_folder, image["file_name"])
         if os.path.exists(image_path):
             shutil.move(image_path, new_image_path)
         else:
             print(f"Error: File {image_path} does not exist")
 
-    #at the end, creating 3 different json annotations files
+    # at the end, creating 3 different json annotations files
     split_json_by_domain(data, root_dir)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # Path to annotations file
-    parser.add_argument("--annotation_file", default='annotations/nocaps_val_4500_captions.json')
+    parser.add_argument(
+        "--annotation_file", default="annotations/nocaps_val_4500_captions.json"
+    )
     parser.add_argument("--root_dir", default="data/nocaps")
     args = parser.parse_args()
 

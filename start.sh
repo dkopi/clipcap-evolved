@@ -85,6 +85,7 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/annotations/ca
 # $shared_part --mlp_hidden_size 3840 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size base --direct_proj --arch flan-mlp --run_name flan_mlp_base_direct_proj_gc100_2e4_ds2017_tanh_3840
 # $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size large --direct_proj --arch flan-mlp --run_name flan_mlp_large_direct_proj_gc100_2e4_ds2017_tanh
 # $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size large --direct_proj --arch flan-mlp --run_name flan_mlp_large_direct_proj_gc100_2e4_ds2017
+# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size large --direct_proj --arch flan-mlp --run_name flan_mlp_large_direct_proj_gc100_2e4
 # $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size large --direct_proj --arch flan-mlp --run_name flan_mlp_large_direct_proj_gc100_2e4_ds2017_leaky
 # $shared_part --mlp_hidden_size 3840 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --finetune_lm --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e4_ds2017_3840_ft
 # $shared_part --mlp_hidden_size 3840 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --finetune_lm --direct_proj --arch flan-mlp --mlp_dropout 0.5 --run_name flan_mlp_small_direct_proj_gc100_2e4_ds2017_3840_ft_d05
@@ -92,7 +93,8 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/annotations/ca
 # $shared_part --mlp_hidden_size 3840 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --lora --direct_proj --arch flan-mlp --mlp_dropout 0.5 --run_name flan_mlp_small_direct_proj_gc100_2e4_ds2017_3840_lora_d05
 # $shared_part --mlp_hidden_size 3840 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size base --finetune_lm --direct_proj --arch flan-mlp --run_name flan_mlp_base_direct_proj_gc100_2e4_ds2017_3840_ft
 
-# $shared_part --mlp_hidden_size 256 --batch_size 32 --eval_batches 16 --val_freq 500 --epochs 50 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e4_bs32
+# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e4
+# $shared_part --mlp_hidden_size 256 --batch_size 32 --eval_batches 16 --val_freq 500 --epochs 50 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e4
 # $shared_part --mlp_hidden_size 256 --batch_size 32 --eval_batches 16 --val_freq 500 --epochs 50 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size base --direct_proj --arch flan-mlp --run_name flan_mlp_base_direct_proj_gc100_2e4_bs32
 # $shared_part --mlp_hidden_size 256 --batch_size 32 --eval_batches 16 --val_freq 500 --epochs 50 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size large --direct_proj --arch flan-mlp --run_name flan_mlp_large_direct_proj_gc100_2e4_bs32
 # $shared_part --mlp_hidden_size 1024 --batch_size 8 --eval_batches 128 --val_freq 8000 --epochs 50 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size large --direct_proj --arch flan-mlp --run_name flan_mlp_large_direct_proj_gc100_2e4_bs8_1024
@@ -100,7 +102,7 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/annotations/ca
 # $shared_part --mlp_hidden_size 256 --batch_size 64 --eval_batches 4 --val_freq 250 --lr 2e-4 --grad_clip 100.0 --flan_size base --arch flan-transformer --run_name flan_transformer_base_gc100_2e4_nw_bs64
 # $shared_part --mlp_hidden_size 256 --batch_size 64 --eval_batches 4 --val_freq 250 --lr 2e-4 --grad_clip 100.0 --flan_size base --arch flan-transformer --direct_proj --run_name flan_transformer_direct_proj_base_gc100_2e4_nw_bs64
 # $shared_part --mlp_hidden_size 256 --batch_size 64 --eval_batches 4 --warmup 1 --val_freq 250 --lr 2e-4 --grad_clip 100.0 --flan_size base --arch flan-transformer --direct_proj --run_name flan_transformer_lin_direct_proj_base_gc100_2e4_bs64
-# $shared_part --mlp_hidden_size 256 --batch_size 64 --eval_batches 4 --warmup 1 --val_freq 250 --lr 2e-4 --grad_clip 100.0 --flan_size small --arch flan-t5 --run_name flant5_base_gc100_2e4_bs64
+# $shared_part --mlp_hidden_size 256 --batch_size 64 --eval_batches 4 --warmup 1 --val_freq 250 --lr 2e-4 --grad_clip 100.0 --flan_size base --arch flan-t5 --run_name flant5_base_gc100_2e4
 # $shared_part --mlp_hidden_size 256 --batch_size 64 --eval_batches 4 --val_freq 250 --warmup 1 --lr 2e-3 --grad_clip 100.0 --flan_size small --arch flan-mlp --finetune_lm --direct_proj --run_name flan_mlp_direct_proj_small_gc100_2e3_bs64_ft
 
 
