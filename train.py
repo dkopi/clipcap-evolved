@@ -32,6 +32,7 @@ from decoder_with_head import DecoderWithHead
 from evaluate import generate, evaluate
 from peft import LoraConfig, get_peft_model
 
+
 class COCODataset(Dataset):
     def __init__(
         self,
@@ -685,11 +686,11 @@ def main():
     parser.add_argument("--use_unpooled_output", action="store_true")
     parser.add_argument(
         "--arch",
-        default="flan-t5",
+        default="mlp",
         choices=["mlp", "clipcap", "flan-t5", "flan-mlp", "flan-transformer"],
     )
     parser.add_argument(
-        "--flan_size", default="small", choices=["small", "base", "large", "xl", "xxl"]
+        "--flan_size", default="base", choices=["small", "base", "large", "xl", "xxl"]
     )
     parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
     parser.add_argument("--eval_batches", type=int, default=64)
