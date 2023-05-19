@@ -1,19 +1,21 @@
 #!/bin/bash
 
-#SBATCH -N 1
+#SBATCH --partition=shared
+#SBATCH --gres=gpu:0
 #SBATCH --job-name=ExampleJob
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=3
 #SBATCH --time=01:00:00
 #SBATCH --mem=32000M
 #SBATCH --output=slurm_output_%A.out
+#SBATCH --error=logs/slurm-%j.err
 
 module purge
 module load 2021
 module load Anaconda3/2021.05
 
 # Your job starts in the directory where you call sbatch
-cd $HOME/uvadlc_practicals_2022
+cd $HOME/code/clipcap-evolved-1
 # Activate your environment
 source activate dl2022
 # Run your code

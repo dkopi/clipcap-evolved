@@ -480,7 +480,7 @@ def train_model(
     **kwargs,
 ):
     pl.seed_everything(42)
-
+    print("loading arguments")
     data_dir = kwargs["data_dir"]
     val_data_dir = kwargs["val_data_dir"]
     nocaps_dir_indomain = kwargs["nocaps_dir_indomain"]
@@ -520,7 +520,7 @@ def train_model(
         tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-" + kwargs["flan_size"])
 
     clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
-
+    print("Loading datasets")
     train_set = COCODataset(
         annotations_file=annotations_file,
         data_dir=data_dir,
@@ -535,6 +535,7 @@ def train_model(
         clip_processor=clip_processor,
         tokenizer=tokenizer,
     )
+    print("Loading nocaps dataset")
     nocaps_set = COCODataset(
         annotations_file=nocaps_annotations_file,
         data_dir=nocaps_dir_indomain,
@@ -556,6 +557,7 @@ def train_model(
         drop_last=False,
         num_workers=16,
     )
+    print("Loading nocaps loader")
     nocaps_loader = DataLoader(
         nocaps_set,
         batch_size=batch_size,
@@ -634,6 +636,7 @@ def train_model(
 
 
 def main():
+    print("Starting training just to test if everything works")
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_path", default="./checkpoints")
     parser.add_argument(
@@ -645,7 +648,7 @@ def main():
     )
     parser.add_argument(
         "--nocaps_annotations_file",
-        default="./data/nocaps/annotations/nocaps_val_4500_captions.json",
+        default="./data/nocaps/annotations/in-domain.json",
     )
     parser.add_argument("--nocaps_dir_indomain", default="./data/nocaps/in-domain")
     parser.add_argument("--nocaps_dir_neardomain", default="./data/nocaps/near-domain")
