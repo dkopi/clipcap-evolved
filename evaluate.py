@@ -5,6 +5,7 @@ import pycocoevalcap
 from pycocoevalcap.cider.cider import Cider
 
 # from pycocoevalcap.spice.spice import Spice
+
 import PIL
 from PIL import Image
 import io
@@ -37,7 +38,7 @@ def evaluate(model, tokenizer, images, tokens, arch: str = "mlp"):
 
     return {
         "cider": float(cider_score) * 100,
-        # 'spice': spice_score
+        #  "spice": float(spice_score) * 100
     }
 
 

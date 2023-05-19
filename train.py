@@ -347,11 +347,13 @@ class TrainingModule(pl.LightningModule):
             if self.hparams.lora and not skip_grad:
                 if self.hparams.arch == "flan-t5":
                     self.freeze_target(self.model.lm)
-                self.model.lm = self.get_lora_model(self.model.lm,
-                                                    self.hparams.arch,
-                                                    self.hparams.lora_target_modules,
-                                                    self.hparams.lora_rank,
-                                                    self.hparams.lora_alpha)
+                self.model.lm = self.get_lora_model(
+                    self.model.lm,
+                    self.hparams.arch,
+                    self.hparams.lora_target_modules,
+                    self.hparams.lora_rank,
+                    self.hparams.lora_alpha,
+                )
         elif self.hparams.arch == "flan-t5":
             self.freeze_target(self.model.lm.decoder, skip_grad)
 
@@ -362,14 +364,25 @@ class TrainingModule(pl.LightningModule):
 
         target.eval()
 
-    def get_lora_model(self, model, arch, lora_target_modules, lora_rank, lora_alpha, lora_config=None):
+    def get_lora_model(
+        self, model, arch, lora_target_modules, lora_rank, lora_alpha, lora_config=None
+    ):
         if not lora_config:
             if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
                 if "all" in lora_target_modules:
-                    target_modules = ["q", "v", "k", "o", "wi_0", "wi_1", "wo", "lm_head"]
+                    target_modules = [
+                        "q",
+                        "v",
+                        "k",
+                        "o",
+                        "wi_0",
+                        "wi_1",
+                        "wo",
+                        "lm_head",
+                    ]
                     print("Using all config for FLAN with ", target_modules)
                 elif "best_config" in lora_target_modules:
-                    target_modules = ["q","v"]
+                    target_modules = ["q", "v"]
                     print("Using best config for FLAN with ", target_modules)
                 else:
                     target_modules = lora_target_modules
@@ -502,7 +515,24 @@ class TrainingModule(pl.LightningModule):
             self.log("total_params", float(self.total_params))
 
     def test_step(self, batch, batch_idx):
-        tokens, mask, images = batch
+        tokens, _, images = batch
+
+        if batch_idx == 0:
+            image_embeds = self.model.get_image_embeds(images[:5])
+            captions = generate(
+                self.model,
+                self.hparams.tokenizer,
+                image_embeds,
+                arch=self.hparams.arch,
+            )
+            for caption in captions:
+                print(f"\ncaption: {caption}\n")
+            self.logger.log_image(
+                key="Generated Captions",
+                images=list(torch.split(images, 1, 0))[:5],
+                caption=captions,
+            )
+
         scores = evaluate(
             self.model,
             self.hparams.tokenizer,
@@ -511,6 +541,7 @@ class TrainingModule(pl.LightningModule):
             arch=self.hparams.arch,
         )
         self.log(f"{self.test_dataset}_cider", scores["cider"])
+        # self.log(f"{self.test_dataset}_spice", scores["spice"])
 
 
 def train_model(
@@ -523,10 +554,6 @@ def train_model(
 
     data_dir = kwargs["data_dir"]
     val_data_dir = kwargs["val_data_dir"]
-    nocaps_dir_indomain = kwargs["nocaps_dir_indomain"]
-    nocaps_dir_neardomain = kwargs["nocaps_dir_neardomain"]
-    nocaps_dir_outdomain = kwargs["nocaps_dir_outdomain"]
-    nocaps_annotations_file = kwargs["nocaps_annotations_file"]
     annotations_file = kwargs["annotations_file"]
     val_annotations_file = kwargs["val_annotations_file"]
 
@@ -574,20 +601,6 @@ def train_model(
         prefix_length=kwargs["prefix_length"],
         clip_processor=clip_processor,
         tokenizer=tokenizer,
-    )
-    train_set = COCODataset(
-        annotations_file="./data/nocaps/annotations/near-domain.json",
-        data_dir="./data/nocaps/near-domain",
-        prefix_length=kwargs["prefix_length"],
-        clip_processor=clip_processor,
-        tokenizer=tokenizer
-    )
-    val_set = COCODataset(
-        annotations_file="./data/nocaps/annotations/out-domain.json",
-        data_dir="./data/nocaps/out-domain",
-        prefix_length=kwargs["prefix_length"],
-        clip_processor=clip_processor,
-        tokenizer=tokenizer
     )
 
     train_loader = DataLoader(
@@ -654,11 +667,11 @@ def train_model(
     print(f"best model: {trainer.checkpoint_callback.best_model_path}")
 
     model = TrainingModule.load_from_checkpoint(
-        trainer.checkpoint_callback.best_model_path,
+        "/tmp/pl_checkpoints/62035/epoch=7-step=59136.ckpt"
+        # trainer.checkpoint_callback.best_model_path,
     )
 
     print("final evaluation...")
-
 
     def test_model(model, dataset_name, annotations_file_path, dir_path):
         dataset = COCODataset(
@@ -666,7 +679,7 @@ def train_model(
             data_dir=dir_path,
             prefix_length=kwargs["prefix_length"],
             clip_processor=clip_processor,
-            tokenizer=tokenizer
+            tokenizer=tokenizer,
         )
         loader = DataLoader(
             dataset,
@@ -678,9 +691,24 @@ def train_model(
         trainer.test(model, loader)
 
     test_model(model, "coco", val_annotations_file, val_data_dir)
-    test_model(model, "nocaps_near", os.path.join(kwargs["nocaps_root"], "annotations/near-domain.json"), os.path.join(kwargs["nocaps_root"], "near-domain"))
-    test_model(model, "nocaps_out", os.path.join(kwargs["nocaps_root"], "annotations/out-domain.json"), os.path.join(kwargs["nocaps_root"], "out-domain"))
-    test_model(model, "nocaps_in", os.path.join(kwargs["nocaps_root"], "annotations/in-domain.json"), os.path.join(kwargs["nocaps_root"], "in-domain"))
+    test_model(
+        model,
+        "nocaps_in",
+        os.path.join(kwargs["nocaps_root"], "annotations/in-domain.json"),
+        os.path.join(kwargs["nocaps_root"], "in-domain"),
+    )
+    test_model(
+        model,
+        "nocaps_near",
+        os.path.join(kwargs["nocaps_root"], "annotations/near-domain.json"),
+        os.path.join(kwargs["nocaps_root"], "near-domain"),
+    )
+    test_model(
+        model,
+        "nocaps_out",
+        os.path.join(kwargs["nocaps_root"], "annotations/out-domain.json"),
+        os.path.join(kwargs["nocaps_root"], "out-domain"),
+    )
 
     wandb.finish()
 
@@ -731,7 +759,7 @@ def main():
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--val_freq", type=int, default=None)
     parser.add_argument("--lora", action="store_true")
-    parser.add_argument("--lora_target_modules", nargs="*", default=("best_config") )
+    parser.add_argument("--lora_target_modules", nargs="*", default=("best_config"))
     parser.add_argument("--lora_rank", type=int, default=4)
     parser.add_argument("--lora_alpha", type=float, default=32)
     parser.add_argument("--direct", action="store_true")
