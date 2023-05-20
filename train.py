@@ -327,7 +327,6 @@ class TrainingModule(pl.LightningModule):
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
         )
-        self.test_dataset = "none"
 
         self.freeze_model()
 
@@ -667,13 +666,14 @@ def train_model(
     print(f"best model: {trainer.checkpoint_callback.best_model_path}")
 
     model = TrainingModule.load_from_checkpoint(
-        "/tmp/pl_checkpoints/62035/epoch=7-step=59136.ckpt"
-        # trainer.checkpoint_callback.best_model_path,
+        trainer.checkpoint_callback.best_model_path,
     )
 
     print("final evaluation...")
 
-    def test_model(model, dataset_name, annotations_file_path, dir_path):
+    def test_model(
+        module, dataset_name, annotations_file_path, dir_path, save_answers=False
+    ):
         dataset = COCODataset(
             annotations_file=annotations_file_path,
             data_dir=dir_path,
@@ -683,31 +683,30 @@ def train_model(
         )
         loader = DataLoader(
             dataset,
-            batch_size=128,
+            batch_size=len(dataset),
             drop_last=False,
             num_workers=16,
         )
-        model.test_dataset = dataset_name
-        trainer.test(model, loader)
+        tokens, _, images = next(iter(loader))
+        scores = evaluate(
+            module.model,
+            module.hparams.tokenizer,
+            images,
+            tokens,
+            arch=module.hparams.arch,
+            answers_path=os.path.join("answers", run_id) if save_answers else None,
+            final=True,
+        )
+        module.log(f"{dataset_name}_cider", scores["cider"])
+        print(f"{dataset_name}_cider: {scores['cider']}")
 
     test_model(model, "coco", val_annotations_file, val_data_dir)
     test_model(
         model,
-        "nocaps_in",
-        os.path.join(kwargs["nocaps_root"], "annotations/in-domain.json"),
-        os.path.join(kwargs["nocaps_root"], "in-domain"),
-    )
-    test_model(
-        model,
-        "nocaps_near",
-        os.path.join(kwargs["nocaps_root"], "annotations/near-domain.json"),
-        os.path.join(kwargs["nocaps_root"], "near-domain"),
-    )
-    test_model(
-        model,
-        "nocaps_out",
-        os.path.join(kwargs["nocaps_root"], "annotations/out-domain.json"),
-        os.path.join(kwargs["nocaps_root"], "out-domain"),
+        "nocaps_all",
+        os.path.join(kwargs["nocaps_root"], "annotations/all.json"),
+        os.path.join(kwargs["nocaps_root"], "all"),
+        save_answers=True,
     )
 
     wandb.finish()

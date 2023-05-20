@@ -10,10 +10,18 @@ import PIL
 from PIL import Image
 import io
 import os
+import json
 
 
-# todo: optimize it, generate captions in batches
-def evaluate(model, tokenizer, images, tokens, arch: str = "mlp"):
+def evaluate(
+    model,
+    tokenizer,
+    images,
+    tokens,
+    arch: str = "mlp",
+    final: bool = False,
+    answers_path: str = None,
+):
     model.eval()
     references = {}
     hypothesis = {}
@@ -21,9 +29,29 @@ def evaluate(model, tokenizer, images, tokens, arch: str = "mlp"):
     cider = Cider()
     # spice = Spice()
 
-    with torch.no_grad():
-        embeds = model.get_image_embeds(images.to(device))
-        captions = generate(model, tokenizer, embeds, arch=arch)
+    captions = []
+    # process in batches of 128
+    _i = 0
+    answers = []
+    if final:
+        for i in range(0, len(images), 128):
+            with torch.no_grad():
+                embeds = model.get_image_embeds(images[i : i + 128].to(device))
+                _captions = generate(model, tokenizer, embeds, arch=arch)
+                captions.extend(_captions)
+                for j in range(len(_captions)):
+                    answers.append({"caption": _captions[j], "image_id": _i})
+                    _i += 1
+        if answers_path is not None:
+            if not os.path.exists(answers_path):
+                os.makedirs(answers_path)
+            path = os.path.join(answers_path, "answers.json")
+            with open(path, "w") as f:
+                json.dump(answers, f)
+    else:
+        with torch.no_grad():
+            embeds = model.get_image_embeds(images.to(device))
+            captions = generate(model, tokenizer, embeds, arch=arch)
 
     if tokens.shape[0] > 1:
         decoded_tokens = tokenizer.batch_decode(tokens, skip_special_tokens=True)
@@ -42,7 +70,6 @@ def evaluate(model, tokenizer, images, tokens, arch: str = "mlp"):
     }
 
 
-# todo: optimize it, generate captions in batches
 def generate(
     model,
     tokenizer,
@@ -94,7 +121,7 @@ def generate(
             if torch.all(torch.any(tokens == stop_token_id, dim=1)):
                 break
 
-        tokens = tokens.squeeze().cpu()  # TODO: Why is this done on cpu?
+        tokens = tokens.squeeze().cpu()
         if len(tokens.shape) == 0:
             tokens = tokens.unsqueeze(0)
         if batch_size > 1:

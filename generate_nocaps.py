@@ -40,26 +40,34 @@ def split_json_by_domain(data, root_dir):
         "images": [],
         "annotations": [],
     }
+    all = {
+        "licenses": data["licenses"],
+        "info": data["info"],
+        "images": [],
+        "annotations": [],
+    }
 
     # Creating a dictionary for fast lookup
     image_id_to_domain = {}
     for image in data["images"]:
         image_id_to_domain[image["id"]] = image["domain"]
-        if image["domain"] == "in-domain":
-            in_domain["images"].append(image)
-        elif image["domain"] == "near-domain":
-            near_domain["images"].append(image)
-        elif image["domain"] == "out-domain":
-            out_domain["images"].append(image)
+        # if image["domain"] == "in-domain":
+        #     in_domain["images"].append(image)
+        # elif image["domain"] == "near-domain":
+        #     near_domain["images"].append(image)
+        # elif image["domain"] == "out-domain":
+        #     out_domain["images"].append(image)
+        all["images"].append(image)
 
     for annotation in data["annotations"]:
         domain = image_id_to_domain.get(annotation["image_id"])
-        if domain == "in-domain":
-            in_domain["annotations"].append(annotation)
-        elif domain == "near-domain":
-            near_domain["annotations"].append(annotation)
-        elif domain == "out-domain":
-            out_domain["annotations"].append(annotation)
+        # if domain == "in-domain":
+        #     in_domain["annotations"].append(annotation)
+        # elif domain == "near-domain":
+        #     near_domain["annotations"].append(annotation)
+        # elif domain == "out-domain":
+        #     out_domain["annotations"].append(annotation)
+        all["annotations"].append(annotation)
 
     def save_json(data, domain):
         filepath = os.path.join(root_dir, "annotations", f"{domain}.json")
@@ -67,9 +75,10 @@ def split_json_by_domain(data, root_dir):
             with open(filepath, "w") as f:
                 json.dump(data, f)
 
-    save_json(in_domain, "in-domain")
-    save_json(near_domain, "near-domain")
-    save_json(out_domain, "out-domain")
+    # save_json(in_domain, "in-domain")
+    # save_json(near_domain, "near-domain")
+    # save_json(out_domain, "out-domain")
+    save_json(all, "all")
 
 
 def get_captions(annotation_file):
@@ -124,7 +133,7 @@ def download_dataset(annotation_file, root_dir):
         src = os.path.join(root_dir, "00000", f"{i:09d}.jpg")
         jsdel = os.path.join(root_dir, "00000", f"{i:09d}.json")
         dst = os.path.join(root_dir, "00000", f"{filename}.jpg")
-        print(src, dst)
+        # print(src, dst)
         if os.path.exists(src):
             os.rename(src, dst)
             os.remove(jsdel)
@@ -136,7 +145,9 @@ def download_dataset(annotation_file, root_dir):
         data = json.load(f)
     images = data["images"]
     for image in images:
-        domain = image["domain"]
+        # domain = image["domain"]
+        domain = "all"
+        domain_folder = os.path.join(root_dir, domain)
         domain_folder = os.path.join(root_dir, domain)
         if not os.path.exists(domain_folder):
             os.makedirs(domain_folder)
