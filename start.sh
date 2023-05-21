@@ -41,6 +41,33 @@ echo "starting training..."
 
 shared_part="srun python train.py --annotations_file $TMPDIR/data/annotations/captions_train2017.json --data_dir $TMPDIR/data/train2017 --val_annotations_file $TMPDIR/data/annotations/captions_val2017.json --val_data_dir $TMPDIR/data/val2017 --checkpoint_path $TMPDIR/pl_checkpoints/$SLURM_JOB_ID --nocaps_root $TMPDIR/data/nocaps"
 
+
+
+
+# ===================================================
+
+## different size of proj+decoder(ft) and lr
+
+# $shared_part --mlp_hidden_size 3840 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --finetune_lm --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e4_3840_ft
+# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --finetune_lm --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e4_256_ft
+# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-5 --grad_clip 100.0 --flan_size small --finetune_lm --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e5_256_ft
+# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-3 --grad_clip 100.0 --flan_size small --finetune_lm --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e3_256_ft
+
+
+## proj+decoder
+
+# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e4_256
+# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size base --direct_proj --arch flan-mlp --run_name flan_mlp_base_direct_proj_gc100_2e4_256
+
+
+## baselines
+
+# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --finetune_lm --arch mlp --run_name baseline_mlp_small_gc100_2e4_256_ft
+# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --arch clipcap --run_name baseline_trans_small_gc100_2e4_256
+
+# ===================================================
+
+
 # $shared_part --batch_size 8 --lr 2e-5 --direct --run_name gpt_direct
 # $shared_part --batch_size 8 --lr 2e-5 --lora --direct --run_name gpt_direct_lora
 
@@ -51,7 +78,7 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/annotations/ca
 # $shared_part --mlp_hidden_size 256 --batch_size 40 --warmup 1 --run_name mlp_small_bs40
 # $shared_part --mlp_hidden_size 3840 --batch_size 40 --no_cosine --warmup 3000 --activation tanh --finetune_lm --warmup_use_steps --run_name mlp_small_nc_bs40_3840_ft_tanh
 # $shared_part --mlp_hidden_size 256 --batch_size 40 --no_cosine --warmup 3000 --activation tanh --finetune_lm --warmup_use_steps --run_name mlp_small_nc_bs40_ft
-$shared_part --mlp_hidden_size 256 --batch_size 40 --no_cosine --warmup 3000 --activation tanh --warmup_use_steps --epochs 1 --arch clipcap --run_name clipcap_small_nc_bs40
+# $shared_part --mlp_hidden_size 256 --batch_size 40 --no_cosine --warmup 3000 --activation tanh --warmup_use_steps --epochs 1 --arch clipcap --run_name clipcap_small_nc_bs40
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --warmup 1 --direct_proj --run_name mlp_small_proj
 # $shared_part --mlp_hidden_size 512 --batch_size 8 --lr 2e-5 --lora --direct_proj --run_name mlp_small_proj_lora_nw
 # $shared_part --mlp_hidden_size 256 --batch_size 8 --lr 2e-5 --direct_proj --run_name mlp_small_proj_nw

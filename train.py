@@ -126,7 +126,7 @@ class CaptioningModel(nn.Module):
         visual_output_size: int = 768,
         gpt2_pretrained_model="gpt2",
         flan_pretrained_model="google/flan-t5-base",
-        clip_pretrained_model="openai/clip-vit-base-patch32",
+        clip_pretrained_model="openai/clip-vit-base-patch16",
         use_unpooled_output: bool = False,
         architecture: str = "mlp",
         mlp_dropout: float = 0.2,
@@ -332,7 +332,7 @@ class TrainingModule(pl.LightningModule):
 
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
         self.clip_processor = CLIPProcessor.from_pretrained(
-            "openai/clip-vit-base-patch32"
+            "openai/clip-vit-base-patch16"
         )
         self.trainable_params = sum(
             p.numel() for p in self.model.parameters() if p.requires_grad
@@ -585,7 +585,7 @@ def train_model(
     ):
         tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-" + kwargs["flan_size"])
 
-    clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+    clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
 
     train_set = COCODataset(
         annotations_file=annotations_file,
