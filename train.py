@@ -49,19 +49,31 @@ class COCODataset(Dataset):
         self.prefix_length = prefix_length
         self.max_seq_len = max_seq_len
         self.sample_limit = sample_limit
-        print(f"dataset size: {len(self.coco.imgs)}")
 
         self.tokenizer = tokenizer
         self.clip_processor = clip_processor
 
+        self.samples = []
+        for img_id in self.coco.imgs.keys():
+            img_info = self.coco.loadImgs(img_id)[0]
+            img_path = f"{self.data_dir}/{img_info['file_name']}"
+
+            ann_ids = self.coco.getAnnIds(imgIds=img_id)
+            anns = self.coco.loadAnns(ann_ids)
+            captions = [ann["caption"] for ann in anns]
+            for caption in captions:
+                self.samples.append((caption, img_path))
+
+        print(f"dataset size: {len(self.samples)}")
+
     def __len__(self):
         return (
-            len(self.coco.imgs)
+            len(self.samples)
             if self.sample_limit is None
             else (
                 self.sample_limit
-                if self.sample_limit < len(self.coco.imgs)
-                else len(self.coco.imgs)
+                if self.sample_limit < len(self.samples)
+                else len(self.samples)
             )
         )
 
@@ -79,18 +91,13 @@ class COCODataset(Dataset):
         return tokens, mask
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, ...]:
-        img_id = list(self.coco.imgs.keys())[idx]
-        img_info = self.coco.loadImgs(img_id)[0]
-        img_path = f"{self.data_dir}/{img_info['file_name']}"
+        caption, img_path = self.samples[idx]
+        tokens, mask = self.pad_tokens(caption)
+
         raw_image = Image.open(img_path).convert("RGB")
         image = self.clip_processor(images=raw_image, return_tensors="pt").pixel_values
         image = image.squeeze(0)
 
-        ann_ids = self.coco.getAnnIds(imgIds=img_id)
-        anns = self.coco.loadAnns(ann_ids)
-        captions = [ann["caption"] for ann in anns]
-        caption = captions[0]
-        tokens, mask = self.pad_tokens(caption)
         return tokens, mask, image
 
 
@@ -123,16 +130,20 @@ class CaptioningModel(nn.Module):
         direct_proj,
         prefix_length: int = 8,
         mlp_hidden_size: int = 64,
-        visual_output_size: int = 768,
         gpt2_pretrained_model="gpt2",
         flan_pretrained_model="google/flan-t5-base",
-        clip_pretrained_model="openai/clip-vit-base-patch16",
+        clip_pretrained_model="openai/clip-vit-base-patch32",
         use_unpooled_output: bool = False,
         architecture: str = "mlp",
         mlp_dropout: float = 0.2,
         activation: str = "relu",
     ):
         super().__init__()
+
+        if direct or direct_proj or use_unpooled_output:
+            visual_output_size = 768
+        else:
+            visual_output_size = 512
 
         self.prefix_length = prefix_length
         self.use_unpooled_output = use_unpooled_output
@@ -143,7 +154,9 @@ class CaptioningModel(nn.Module):
             self.visual_output_size = visual_output_size
         self.direct = direct
         self.direct_proj = direct_proj
-        self.clip = CLIPModel.from_pretrained(clip_pretrained_model).vision_model
+        _clip = CLIPModel.from_pretrained(clip_pretrained_model)
+        self.clip = _clip.vision_model
+        self.clip_head = _clip.visual_projection
 
         if architecture == "mlp" or architecture == "clipcap":
             self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
@@ -198,33 +211,10 @@ class CaptioningModel(nn.Module):
         self, image_embeds: torch.Tensor, encoder_outputs: Optional[torch.tensor] = None
     ):
         if self.architecture == "flan-t5":
-            # Get the logits of the next token when using flan-t5
-            # eos = torch.tensor([self.lm.config.eos_token_id]).to(image_embeds.device)
-            # eos_embeds = (
-            #     self.token_to_embed(eos)
-            #     .unsqueeze(0)
-            #     .expand(
-            #         image_embeds.shape[0],
-            #         1,
-            #         image_embeds.shape[2],
-            #     )
-            # )
-            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
             return self.lm(
                 inputs_embeds=image_embeds, decoder_inputs_embeds=encoder_outputs
             ).logits
         elif self.architecture == "flan-mlp" or self.architecture == "flan-transformer":
-            # eos = torch.tensor([self.lm.config.eos_token_id]).to(image_embeds.device)
-            # eos_embeds = (
-            #     self.token_to_embed(eos)
-            #     .unsqueeze(0)
-            #     .expand(
-            #         image_embeds.shape[0],
-            #         1,
-            #         image_embeds.shape[2],
-            #     )
-            # )
-            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
             return self.lm(
                 hidden_states=image_embeds, decoder_inputs_embeds=encoder_outputs
             ).logits
@@ -241,6 +231,7 @@ class CaptioningModel(nn.Module):
             clip_embeds = self.clip(images)["last_hidden_state"].flatten(start_dim=-2)
         else:
             clip_embeds = self.clip(images)["pooler_output"]
+            clip_embeds = self.clip_head(clip_embeds)
         return self.mapper(clip_embeds).view(
             -1, self.prefix_length, self.lm_embedding_size
         )
@@ -254,34 +245,12 @@ class CaptioningModel(nn.Module):
         image_embeds = self.get_image_embeds(images)
 
         if self.architecture == "flan-t5":
-            # eos = torch.tensor([self.lm.config.eos_token_id]).to(tokens.device)
-            # eos_embeds = (
-            #     self.token_to_embed(eos)
-            #     .unsqueeze(0)
-            #     .expand(
-            #         image_embeds.shape[0],
-            #         1,
-            #         image_embeds.shape[2],
-            #     )
-            # )
-            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
             out = self.lm(inputs_embeds=image_embeds, labels=tokens)
         elif self.architecture == "clipcap" or self.architecture == "mlp":
             embedding_text = self.lm.transformer.wte(tokens)
             embedding_cat = torch.cat((image_embeds, embedding_text), dim=1)
             out = self.lm(inputs_embeds=embedding_cat, attention_mask=mask)
         elif self.architecture == "flan-mlp" or self.architecture == "flan-transformer":
-            # eos = torch.tensor([self.lm.config.eos_token_id]).to(tokens.device)
-            # eos_embeds = (
-            #     self.token_to_embed(eos)
-            #     .unsqueeze(0)
-            #     .expand(
-            #         image_embeds.shape[0],
-            #         1,
-            #         image_embeds.shape[2],
-            #     )
-            # )
-            # image_embeds = torch.cat((image_embeds, eos_embeds), dim=1)
             out = self.lm(hidden_states=image_embeds, labels=tokens)
         else:
             raise ValueError(f"Unknown architecture: {self.architecture}")
@@ -332,7 +301,7 @@ class TrainingModule(pl.LightningModule):
 
         self.loss_module = nn.CrossEntropyLoss(ignore_index=0)
         self.clip_processor = CLIPProcessor.from_pretrained(
-            "openai/clip-vit-base-patch16"
+            "openai/clip-vit-base-patch32"
         )
         self.trainable_params = sum(
             p.numel() for p in self.model.parameters() if p.requires_grad
@@ -341,6 +310,7 @@ class TrainingModule(pl.LightningModule):
 
     def freeze_model(self, skip_grad=False):
         self.freeze_target(self.model.clip, skip_grad)
+        self.freeze_target(self.model.clip_head, skip_grad)
         if not self.hparams.finetune_lm:
             self.freeze_target(self.model.lm, skip_grad)
             if self.hparams.lora and not skip_grad:
@@ -513,35 +483,6 @@ class TrainingModule(pl.LightningModule):
             self.log("trainable_params", float(self.trainable_params))
             self.log("total_params", float(self.total_params))
 
-    def test_step(self, batch, batch_idx):
-        tokens, _, images = batch
-
-        if batch_idx == 0:
-            image_embeds = self.model.get_image_embeds(images[:5])
-            captions = generate(
-                self.model,
-                self.hparams.tokenizer,
-                image_embeds,
-                arch=self.hparams.arch,
-            )
-            for caption in captions:
-                print(f"\ncaption: {caption}\n")
-            self.logger.log_image(
-                key="Generated Captions",
-                images=list(torch.split(images[:5], 1, 0)),
-                caption=captions,
-            )
-
-        scores = evaluate(
-            self.model,
-            self.hparams.tokenizer,
-            images,
-            tokens,
-            arch=self.hparams.arch,
-        )
-        self.log(f"{self.test_dataset}_cider", scores["cider"])
-        # self.log(f"{self.test_dataset}_spice", scores["spice"])
-
 
 def train_model(
     batch_size,
@@ -585,7 +526,7 @@ def train_model(
     ):
         tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-" + kwargs["flan_size"])
 
-    clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
+    clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
     train_set = COCODataset(
         annotations_file=annotations_file,
@@ -687,7 +628,25 @@ def train_model(
             drop_last=False,
             num_workers=16,
         )
+
         tokens, _, images = next(iter(loader))
+
+        # generate captions
+        image_embeds = module.model.get_image_embeds(images[:5])
+        captions = generate(
+            module.model,
+            module.hparams.tokenizer,
+            image_embeds,
+            arch=module.hparams.arch,
+        )
+        for caption in captions:
+            print(f"\ncaption: {caption}\n")
+        wandb_logger.log_image(
+            key="Generated Captions",
+            images=list(torch.split(images[:5], 1, 0)),
+            caption=captions,
+        )
+
         scores = evaluate(
             module.model,
             module.hparams.tokenizer,
@@ -730,7 +689,7 @@ def main():
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--save_every", type=int, default=1)
     parser.add_argument("--prefix_length", type=int, default=10)
-    parser.add_argument("--batch_size", type=int, default=16)
+    parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--mlp_hidden_size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--find_lr", action="store_true")
