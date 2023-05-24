@@ -71,6 +71,18 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/train.json --d
 ## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size large --direct_proj --arch flan-mlp --run_name flan_mlp_large_proj
 
 
+## proj+decoder(t5)
+
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --t5 --run_name t5_mlp_base_proj
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --t5 --finetune_lm --run_name t5_mlp_base_proj_ft
+
+
+## trans+decoder
+
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size small --arch flan-transformer --run_name flan_trans_small
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --arch flan-transformer --run_name flan_trans_base
+
+
 ## baselines
 
 #! $shared_part --lr 2e-5 --arch clipcap --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --run_name clipcap_trans
@@ -79,11 +91,16 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/train.json --d
 
 
 ## proj+gpt
-# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps  --direct_proj --run_name clipcap_mlp_proj
-# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps  --direct_proj --finetune_lm --run_name clipcap_mlp_proj_ft
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps  --direct_proj --run_name clipcap_mlp_proj
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps  --direct_proj --finetune_lm --run_name clipcap_mlp_proj_ft
+
+
 
 
 # ===================================================
+
+
+
 
 
 # $shared_part --batch_size 8 --lr 2e-5 --direct --run_name gpt_direct

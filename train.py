@@ -340,7 +340,8 @@ class TrainingModule(pl.LightningModule):
             prefix_length,
             mlp_hidden_size,
             gpt2_pretrained_model="gpt2" + kwargs["gpt_size"],
-            flan_pretrained_model="google/flan-t5-" + kwargs["flan_size"],
+            flan_pretrained_model=("t5-" if kwargs["t5"] else "google/flan-t5-")
+            + kwargs["flan_size"],
             use_unpooled_output=use_unpooled_output,
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
@@ -562,7 +563,9 @@ def train_model(
         or kwargs["arch"] == "flan-mlp"
         or kwargs["arch"] == "flan-transformer"
     ):
-        tokenizer = T5Tokenizer.from_pretrained("google/flan-t5-" + kwargs["flan_size"])
+        tokenizer = T5Tokenizer.from_pretrained(
+            ("t5-" if kwargs["t5"] else "google/flan-t5-") + kwargs["flan_size"]
+        )
 
     clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 
@@ -788,6 +791,7 @@ def main():
     parser.add_argument("--direct", action="store_true")
     parser.add_argument("--direct_proj", action="store_true")
     parser.add_argument("--preload_train", action="store_true")
+    parser.add_argument("--t5", action="store_true")
 
     args = parser.parse_args()
 
