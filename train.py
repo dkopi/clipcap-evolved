@@ -654,6 +654,7 @@ def train_model(
     )
     print(f"model load time: {(time.time() - start)}s")
 
+    model.model.eval()
     print("final evaluation...")
 
     def test_model(
@@ -722,14 +723,13 @@ def train_model(
         print(f"{dataset_name}_spice: {scores['spice']}")
 
     start = time.time()
-    test_model(
-        model, "coco", test_annotations_file, data_dir, save_answers=True, caption=True
-    )
+    test_model(model, "coco", test_annotations_file, data_dir, caption=True)
     test_model(
         model,
         "nocaps_all",
         os.path.join(kwargs["nocaps_root"], "annotations/all.json"),
         os.path.join(kwargs["nocaps_root"], "all"),
+        save_answers=True,
     )
     print(f"evaluation time: {(time.time() - start) / 60}min")
 

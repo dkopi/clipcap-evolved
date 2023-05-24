@@ -26,6 +26,7 @@ def evaluate(
 
     hypothesis = {}
     references = {}
+    answers = []
 
     for i in range(0, len(images), 128):
         with torch.no_grad():
@@ -39,6 +40,7 @@ def evaluate(
                 id = _img_ids[j].cpu().item()
                 if id not in hypothesis:
                     entry = {"caption": _captions[j], "image_id": id}
+                    answers.append(entry)
                     hypothesis[id] = [entry]
                 if id not in references:
                     references[id] = []
@@ -48,7 +50,7 @@ def evaluate(
             os.makedirs(answers_path)
         path = os.path.join(answers_path, "answers.json")
         with open(path, "w") as f:
-            json.dump(hypothesis, f)
+            json.dump(answers, f)
 
     tokenizer = PTBTokenizer()
     hypothesis = tokenizer.tokenize(hypothesis)
