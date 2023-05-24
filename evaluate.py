@@ -1,14 +1,9 @@
 import torch
-import torch.nn.functional as nnf
-from pycocotools.coco import COCO
-import pycocoevalcap
 from pycocoevalcap.cider.cider import Cider
+from pycocoevalcap.spice.spice import Spice
+from pycocoevalcap.tokenizer.ptbtokenizer import PTBTokenizer
 
-# from pycocoevalcap.spice.spice import Spice
-
-import PIL
 from PIL import Image
-import io
 import os
 import json
 
@@ -17,9 +12,9 @@ def evaluate(
     model,
     tokenizer,
     images,
+    img_ids,
     tokens,
     arch: str = "mlp",
-    final: bool = False,
     answers_path: str = None,
 ):
     model.eval()
@@ -27,54 +22,49 @@ def evaluate(
     hypothesis = {}
     device = next(model.parameters()).device
     cider = Cider()
-    # spice = Spice()
+    spice = Spice()
 
-    captions = []
-    # process in batches of 128
-    _i = 0
-    answers = []
-    if final:
-        for i in range(0, len(images), 128):
-            with torch.no_grad():
-                embeds = model.get_image_embeds(images[i : i + 128].to(device))
-                _captions = generate(model, tokenizer, embeds, arch=arch)
-                captions.extend(_captions)
-                for j in range(len(_captions)):
-                    answers.append({"caption": _captions[j], "image_id": _i})
-                    _i += 1
-        if answers_path is not None:
-            if not os.path.exists(answers_path):
-                os.makedirs(answers_path)
-            path = os.path.join(answers_path, "answers.json")
-            with open(path, "w") as f:
-                json.dump(answers, f)
-    else:
+    hypothesis = {}
+    references = {}
+
+    for i in range(0, len(images), 128):
         with torch.no_grad():
-            embeds = model.get_image_embeds(images.to(device))
-            captions = generate(model, tokenizer, embeds, arch=arch)
+            embeds = model.get_image_embeds(images[i : i + 128].to(device))
+            _img_ids = img_ids[i : i + 128]
+            _captions = generate(model, tokenizer, embeds, arch=arch)
+            _decoded = tokenizer.batch_decode(
+                tokens[i : i + 128], skip_special_tokens=True
+            )
+            for j in range(len(_captions)):
+                id = _img_ids[j].cpu().item()
+                if id not in hypothesis:
+                    entry = {"caption": _captions[j], "image_id": id}
+                    hypothesis[id] = [entry]
+                if id not in references:
+                    references[id] = []
+                references[id].append({"caption": _decoded[j], "image_id": id})
+    if answers_path is not None:
+        if not os.path.exists(answers_path):
+            os.makedirs(answers_path)
+        path = os.path.join(answers_path, "answers.json")
+        with open(path, "w") as f:
+            json.dump(hypothesis, f)
 
-    if tokens.shape[0] > 1:
-        decoded_tokens = tokenizer.batch_decode(tokens, skip_special_tokens=True)
-    else:
-        decoded_tokens = tokenizer.decode(tokens, skip_special_tokens=True)
-
-    hypothesis = {i + 1: [caption] for i, caption in enumerate(captions)}
-    references = {i + 1: [token] for i, token in enumerate(decoded_tokens)}
+    tokenizer = PTBTokenizer()
+    hypothesis = tokenizer.tokenize(hypothesis)
+    references = tokenizer.tokenize(references)
 
     cider_score, _ = cider.compute_score(references, hypothesis)
-    # spice_score, _ = spice.compute_score(references, hypothesis)
+    spice_score, _ = spice.compute_score(references, hypothesis)
 
-    return {
-        "cider": float(cider_score) * 100,
-        #  "spice": float(spice_score) * 100
-    }
+    return {"cider": float(cider_score) * 100, "spice": float(spice_score) * 100}
 
 
 def generate(
     model,
     tokenizer,
     embed=None,
-    entry_length=50,
+    entry_length=67,
     top_p=0.8,  # do we use top_p or temperature?
     temperature=1.0,
     stop_token: str = ".",  # might need to set dot for gpt2

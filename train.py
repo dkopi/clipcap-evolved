@@ -11,6 +11,7 @@ from lightning.pytorch.callbacks import (
     LearningRateMonitor,
     TQDMProgressBar,
     ModelCheckpoint,
+    Callback,
 )
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.tuner import Tuner
@@ -31,6 +32,7 @@ from clipcap_transformer import ClipCapTransformerMapper
 from decoder_with_head import DecoderWithHead
 from evaluate import generate, evaluate
 from peft import LoraConfig, get_peft_model
+import time
 
 
 class COCODataset(Dataset):
@@ -43,28 +45,42 @@ class COCODataset(Dataset):
         tokenizer: None,
         max_seq_len: int = 36,
         sample_limit: Optional[int] = None,
+        preload: bool = False,
+        return_img_id: bool = False,
     ):
         self.coco = COCO(annotations_file)
         self.data_dir = data_dir
         self.prefix_length = prefix_length
         self.max_seq_len = max_seq_len
         self.sample_limit = sample_limit
+        self.preload = preload
+        self.return_img_id = return_img_id
 
         self.tokenizer = tokenizer
         self.clip_processor = clip_processor
 
         self.samples = []
+        self.images = {}
+        start = time.time()
         for img_id in self.coco.imgs.keys():
-            img_info = self.coco.loadImgs(img_id)[0]
-            img_path = f"{self.data_dir}/{img_info['file_name']}"
+            if preload:
+                img_info = self.coco.loadImgs(img_id)[0]
+                img_path = f"{self.data_dir}/{img_info['file_name']}"
+                raw_image = Image.open(img_path).convert("RGB")
+                image = self.clip_processor(
+                    images=raw_image, return_tensors="pt"
+                ).pixel_values
+                image = image.squeeze(0)
+                self.images[img_id] = image
 
             ann_ids = self.coco.getAnnIds(imgIds=img_id)
             anns = self.coco.loadAnns(ann_ids)
             captions = [ann["caption"] for ann in anns]
             for caption in captions:
-                self.samples.append((caption, img_path))
+                self.samples.append((caption, img_id))
 
         print(f"dataset size: {len(self.samples)}")
+        print(f"dataset load time: {time.time() - start}s")
 
     def __len__(self):
         return (
@@ -91,14 +107,23 @@ class COCODataset(Dataset):
         return tokens, mask
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, ...]:
-        caption, img_path = self.samples[idx]
+        caption, img_id = self.samples[idx]
         tokens, mask = self.pad_tokens(caption)
+        if self.preload:
+            image = self.images[img_id]
+        else:
+            img_info = self.coco.loadImgs(img_id)[0]
+            img_path = f"{self.data_dir}/{img_info['file_name']}"
+            raw_image = Image.open(img_path).convert("RGB")
+            image = self.clip_processor(
+                images=raw_image, return_tensors="pt"
+            ).pixel_values
+            image = image.squeeze(0)
 
-        raw_image = Image.open(img_path).convert("RGB")
-        image = self.clip_processor(images=raw_image, return_tensors="pt").pixel_values
-        image = image.squeeze(0)
-
-        return tokens, mask, image
+        if self.return_img_id:
+            return tokens, mask, image, img_id
+        else:
+            return tokens, mask, image
 
 
 class MLP(nn.Module):
@@ -279,6 +304,28 @@ class CosineWarmupScheduler(optim.lr_scheduler._LRScheduler):
         return lr_factor
 
 
+class EvaluateCallback(Callback):
+    def __init__(self, dataset):
+        super().__init__()
+        self.loader = DataLoader(dataset, batch_size=len(dataset))
+
+    def on_validation_end(self, trainer, module):
+        start = time.time()
+        tokens, _, images, img_ids = next(iter(self.loader))
+
+        scores = evaluate(
+            module.model,
+            module.hparams.tokenizer,
+            images,
+            img_ids,
+            tokens,
+            arch=module.hparams.arch,
+        )
+        trainer.log("cider", scores["cider"], prog_bar=True)
+        trainer.log("spice", scores["spice"], prog_bar=True)
+        print(f"eval time: {time.time() - start}s")
+
+
 class TrainingModule(pl.LightningModule):
     def __init__(
         self, prefix_length, mlp_hidden_size, use_unpooled_output, arch, **kwargs
@@ -295,6 +342,7 @@ class TrainingModule(pl.LightningModule):
             use_unpooled_output=use_unpooled_output,
             architecture=arch,
             mlp_dropout=kwargs["mlp_dropout"],
+            activation=kwargs["activation"],
         )
 
         self.freeze_model()
@@ -449,7 +497,8 @@ class TrainingModule(pl.LightningModule):
             tokens, mask, images = batch
 
             if batch_idx == 0:
-                image_embeds = self.model.get_image_embeds(images[:5])
+                _images = images[torch.tensor([0, 5, 10, 15, 20, 25])]
+                image_embeds = self.model.get_image_embeds(_images)
                 captions = generate(
                     self.model,
                     self.hparams.tokenizer,
@@ -460,22 +509,9 @@ class TrainingModule(pl.LightningModule):
                     print(f"\ncaption: {caption}\n")
                 self.logger.log_image(
                     key="Generated Captions",
-                    images=list(torch.split(images[:5], 1, 0)),
+                    images=list(torch.split(_images, 1, 0)),
                     caption=captions,
                 )
-
-            if (
-                self.hparams.eval_batches == None
-                or batch_idx < self.hparams.eval_batches
-            ):
-                scores = evaluate(
-                    self.model,
-                    self.hparams.tokenizer,
-                    images,
-                    tokens,
-                    arch=self.hparams.arch,
-                )
-                self.log("cider", scores["cider"], prog_bar=True)
 
             loss = self.get_loss(tokens, images, mask)
 
@@ -493,9 +529,9 @@ def train_model(
     pl.seed_everything(42)
 
     data_dir = kwargs["data_dir"]
-    val_data_dir = kwargs["val_data_dir"]
     annotations_file = kwargs["annotations_file"]
     val_annotations_file = kwargs["val_annotations_file"]
+    test_annotations_file = kwargs["test_annotations_file"]
 
     run_id = wandb.util.generate_id()
 
@@ -534,13 +570,15 @@ def train_model(
         prefix_length=kwargs["prefix_length"],
         tokenizer=tokenizer,
         clip_processor=clip_processor,
+        preload=kwargs["preload_train"],
     )
     val_set = COCODataset(
         annotations_file=val_annotations_file,
-        data_dir=val_data_dir,
+        data_dir=data_dir,
         prefix_length=kwargs["prefix_length"],
         clip_processor=clip_processor,
         tokenizer=tokenizer,
+        preload=kwargs["preload_train"],
     )
 
     train_loader = DataLoader(
@@ -603,17 +641,26 @@ def train_model(
         tuner = Tuner(trainer)
         tuner.lr_find(training_module, train_loader, val_loader)
 
+    start = time.time()
     trainer.fit(training_module, train_loader, val_loader)
+    print(f"training time: {(time.time() - start) / 3600}h")
     print(f"best model: {trainer.checkpoint_callback.best_model_path}")
 
+    start = time.time()
     model = TrainingModule.load_from_checkpoint(
         trainer.checkpoint_callback.best_model_path,
     )
+    print(f"model load time: {(time.time() - start)}s")
 
     print("final evaluation...")
 
     def test_model(
-        module, dataset_name, annotations_file_path, dir_path, save_answers=False
+        module,
+        dataset_name,
+        annotations_file_path,
+        dir_path,
+        save_answers=False,
+        caption=False,
     ):
         dataset = COCODataset(
             annotations_file=annotations_file_path,
@@ -621,6 +668,7 @@ def train_model(
             prefix_length=kwargs["prefix_length"],
             clip_processor=clip_processor,
             tokenizer=tokenizer,
+            return_img_id=True,
         )
         loader = DataLoader(
             dataset,
@@ -629,44 +677,57 @@ def train_model(
             num_workers=16,
         )
 
-        tokens, _, images = next(iter(loader))
+        tokens, _, images, img_ids = next(iter(loader))
 
-        # generate captions
-        image_embeds = module.model.get_image_embeds(images[:5])
-        captions = generate(
-            module.model,
-            module.hparams.tokenizer,
-            image_embeds,
-            arch=module.hparams.arch,
-        )
-        for caption in captions:
-            print(f"\ncaption: {caption}\n")
-        wandb_logger.log_image(
-            key="Generated Captions",
-            images=list(torch.split(images[:5], 1, 0)),
-            caption=captions,
-        )
+        if caption:
+            device = next(model.parameters()).device
+            _images = images[torch.tensor([0, 5, 10, 15, 20, 25])].to(device)
+            image_embeds = module.model.get_image_embeds(_images)
+            captions = generate(
+                module.model,
+                module.hparams.tokenizer,
+                image_embeds,
+                arch=module.hparams.arch,
+            )
+            for caption in captions:
+                print(f"\ncaption: {caption}\n")
+            wandb_logger.log_image(
+                key="Generated Captions",
+                images=list(torch.split(_images, 1, 0)),
+                caption=captions,
+            )
 
+        start = time.time()
         scores = evaluate(
             module.model,
             module.hparams.tokenizer,
             images,
+            img_ids,
             tokens,
             arch=module.hparams.arch,
-            answers_path=os.path.join("answers", run_id) if save_answers else None,
-            final=True,
+            answers_path=os.path.join("answers", f"{run_name}_{run_id}")
+            if save_answers
+            else None,
         )
-        module.log(f"{dataset_name}_cider", scores["cider"])
+        print(f"partial evaluation time: {(time.time() - start) / 60}min")
+        wandb_logger.log_metrics(
+            {
+                f"{dataset_name}_cider": scores["cider"],
+                f"{dataset_name}_spice": scores["spice"],
+            }
+        )
         print(f"{dataset_name}_cider: {scores['cider']}")
+        print(f"{dataset_name}_spice: {scores['spice']}")
 
-    test_model(model, "coco", val_annotations_file, val_data_dir)
+    start = time.time()
+    test_model(model, "coco", test_annotations_file, data_dir, save_answers=True)
     test_model(
         model,
         "nocaps_all",
         os.path.join(kwargs["nocaps_root"], "annotations/all.json"),
         os.path.join(kwargs["nocaps_root"], "all"),
-        save_answers=True,
     )
+    print(f"evaluation time: {(time.time() - start) / 60}min")
 
     wandb.finish()
 
@@ -676,16 +737,17 @@ def train_model(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint_path", default="./checkpoints")
-    parser.add_argument(
-        "--annotations_file", default="./data/coco/annotations/captions_train2017.json"
-    )
+    parser.add_argument("--annotations_file", default="./data/train.json")
     parser.add_argument(
         "--val_annotations_file",
-        default="./data/coco/annotations/captions_val2017.json",
+        default="./data/val.json",
+    )
+    parser.add_argument(
+        "--test_annotations_file",
+        default="./data/test.json",
     )
     parser.add_argument("--nocaps_root", default="./data/nocaps")
     parser.add_argument("--data_dir", default="./data/coco/train2017")
-    parser.add_argument("--val_data_dir", default="./data/coco/val2017")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--save_every", type=int, default=1)
     parser.add_argument("--prefix_length", type=int, default=10)
@@ -707,7 +769,6 @@ def main():
         "--flan_size", default="base", choices=["small", "base", "large", "xl", "xxl"]
     )
     parser.add_argument("--gpt_size", default="", choices=["", "medium", "large", "xl"])
-    parser.add_argument("--eval_batches", type=int, default=None)
     parser.add_argument("--mlp_dropout", type=float, default=0.0)
     parser.add_argument(
         "--activation", type=str, default="tanh", choices=["tanh", "relu", "leaky"]
@@ -722,6 +783,7 @@ def main():
     parser.add_argument("--lora_alpha", type=float, default=32)
     parser.add_argument("--direct", action="store_true")
     parser.add_argument("--direct_proj", action="store_true")
+    parser.add_argument("--preload_train", action="store_true")
 
     args = parser.parse_args()
 

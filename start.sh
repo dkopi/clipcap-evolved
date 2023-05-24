@@ -14,7 +14,7 @@ rm -rf checkpoints
 
 source $HOME/.bashrc
 module load cuda11.7/toolkit/11.7
-# module load java/jdk-19
+module load java/jdk-8
 
 python <<EOF
 import torch
@@ -30,6 +30,7 @@ echo "unzipping data..."
 # ./data/unzip -q -n data/annotations_trainval2014.zip -d $TMPDIR/data
 cp -n data/train.json $TMPDIR/data/train.json
 cp -n data/val.json $TMPDIR/data/val.json
+cp -n data/test.json $TMPDIR/data/test.json
 ./data/unzip -q -n data/val2014.zip -d $TMPDIR/data
 ./data/unzip -q -n data/train2014.zip -d $TMPDIR/data
 # ./data/unzip -q -n data/annotations_trainval2017.zip -d $TMPDIR/data
@@ -41,51 +42,45 @@ python generate_nocaps.py --root_dir $TMPDIR/data/nocaps
 
 echo "starting training..."
 
-shared_part="srun python train.py --annotations_file $TMPDIR/data/train.json --data_dir $TMPDIR/data --val_annotations_file $TMPDIR/data/val.json --val_data_dir $TMPDIR/data --checkpoint_path $TMPDIR/pl_checkpoints/$SLURM_JOB_ID --nocaps_root $TMPDIR/data/nocaps"
+shared_part="srun python train.py --annotations_file $TMPDIR/data/train.json --data_dir $TMPDIR/data --val_annotations_file $TMPDIR/data/val.json --test_annotations_file $TMPDIR/data/test.json --checkpoint_path $TMPDIR/pl_checkpoints/$SLURM_JOB_ID --nocaps_root $TMPDIR/data/nocaps"
 
 
 
 
 # ===================================================
 
-## different size of proj+decoder(ft) and lr
 
-# $shared_part --mlp_hidden_size 3840 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --finetune_lm --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e4_3840_ft
-# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --finetune_lm --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e4_256_ft
-# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-5 --grad_clip 100.0 --flan_size small --finetune_lm --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e5_256_ft
-# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-3 --grad_clip 100.0 --flan_size small --finetune_lm --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e3_256_ft
+## mlp+flant5
+
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --finetune_lm --arch flan-t5 --flan_size small --run_name flant5_small_ft
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --finetune_lm --arch flan-t5 --flan_size base --run_name flant5_base_ft
+
+
+## proj+flant5
+
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --finetune_lm --direct_proj --arch flan-t5 --flan_size small --run_name flant5_proj_small_ft
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --finetune_lm --direct_proj --arch flan-t5 --flan_size base --run_name flant5_proj_base_ft
 
 
 ## proj+decoder
 
-# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e4_256
-# $shared_part --mlp_hidden_size 3840 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size small --direct_proj --arch flan-mlp --run_name flan_mlp_small_direct_proj_gc100_2e4_3840
-# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size base --direct_proj --arch flan-mlp --run_name flan_mlp_base_direct_proj_gc100_2e4_256
-# $shared_part --mlp_hidden_size 3840 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size base --direct_proj --arch flan-mlp --run_name flan_mlp_base_direct_proj_gc100_2e4_3840
-# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size large --direct_proj --arch flan-mlp --run_name flan_mlp_large_direct_proj_gc100_2e4_256
-# $shared_part --mlp_hidden_size 3840 --warmup 1 --lr 2e-4 --grad_clip 100.0 --flan_size large --direct_proj --arch flan-mlp --run_name flan_mlp_large_direct_proj_gc100_2e4_3840
-
-# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --run_name flan_mlp_base_direct_proj_orig
-# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --run_name flan_mlp_base_direct_proj_orig_bs8
-# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --finetune_lm --run_name flan_mlp_base_direct_proj_orig_ft
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size small --direct_proj --arch flan-mlp --run_name flan_mlp_small_proj
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size small --direct_proj --arch flan-mlp --finetune_lm --run_name flan_mlp_small_proj_ft
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --run_name flan_mlp_base_proj
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --finetune_lm --run_name flan_mlp_base_proj_ft
+# $shared_part --mlp_hidden_size 3840 --epochs 1 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --finetune_lm --run_name flan_mlp_base_proj_ft
 
 
 ## baselines
 
-# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --finetune_lm --arch mlp --run_name baseline_mlp_small_gc100_2e4_256_ft
-# $shared_part --mlp_hidden_size 3840 --warmup 1 --lr 2e-4 --grad_clip 100.0 --finetune_lm --arch mlp --run_name baseline_mlp_small_gc100_2e4_3840_ft
-# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-4 --grad_clip 100.0 --arch clipcap --run_name baseline_trans_small_gc100_2e4_256
-# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-5 --grad_clip 100.0 --finetune_lm --arch mlp --run_name baseline_mlp_small_gc100_2e5_256_ft
-# $shared_part --mlp_hidden_size 256 --warmup 1 --lr 2e-5 --grad_clip 100.0 --arch clipcap --run_name baseline_trans_small_gc100_2e5_256
+# $shared_part --lr 2e-5 --arch clipcap --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --run_name clipcap_trans
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --run_name clipcap_mlp
+$shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --finetune_lm --run_name clipcap_mlp_ft
 
-# $shared_part --mlp_hidden_size 3840 --lr 2e-4 --grad_clip 100.0 --finetune_lm --arch mlp --run_name cliphead_baseline_mlp_small_gc100_2e4_3840_nw_ft
-# $shared_part --mlp_hidden_size 3840 --lr 2e-4 --grad_clip 100.0 --finetune_lm --activation tanh --arch mlp --run_name cliphead_baseline_mlp_small_gc100_2e4_3840_nw_ft_tanh
-# $shared_part --lr 2e-4 --grad_clip 100.0 --arch clipcap --run_name cliphead_baseline_trans_small_gc100_2e4
 
-# $shared_part --lr 2e-5 --arch clipcap --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --run_name cliphead_baseline_trans_orig
-# $shared_part --lr 2e-5 --arch clipcap --no_cosine --warmup 5000 --warmup_use_steps --run_name cliphead_baseline_trans_orig_bs8
-# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --finetune_lm --run_name cliphead_mlp_orig
-# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 8 --no_cosine --warmup 5000 --warmup_use_steps --finetune_lm --run_name cliphead_mlp_orig_bs8
+## proj+gpt
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --finetune_lm --run_name clipcap_mlp_proj
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --finetune_lm --run_name clipcap_mlp_proj_ft
 
 
 # ===================================================
