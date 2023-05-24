@@ -128,7 +128,7 @@ class COCODataset(Dataset):
 
 class MLP(nn.Module):
     def __init__(
-        self, input_size, hidden_size, output_size, dropout=0.2, activation="relu"
+        self, input_size, hidden_size, output_size, dropout=0.0, activation="relu"
     ):
         super(MLP, self).__init__()
         self.fc1 = nn.Linear(input_size, hidden_size)
@@ -139,11 +139,13 @@ class MLP(nn.Module):
             self.activation = nn.Tanh()
         elif activation == "leaky":
             self.activation = nn.LeakyReLU()
-        self.dropout = nn.Dropout(dropout)
+        if dropout > 0.0:
+            self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         x = self.activation(self.fc1(x))
-        x = self.dropout(x)
+        if hasattr(self, "dropout"):
+            x = self.dropout(x)
         x = self.fc2(x)
         return x
 
@@ -720,7 +722,9 @@ def train_model(
         print(f"{dataset_name}_spice: {scores['spice']}")
 
     start = time.time()
-    test_model(model, "coco", test_annotations_file, data_dir, save_answers=True)
+    test_model(
+        model, "coco", test_annotations_file, data_dir, save_answers=True, caption=True
+    )
     test_model(
         model,
         "nocaps_all",
