@@ -212,7 +212,7 @@ class CaptioningModel(nn.Module):
                     self.visual_output_size,
                     self.lm_embedding_size,
                     prefix_length,
-                    10,
+                    prefix_length,
                     8,
                 )
             else:
@@ -393,7 +393,7 @@ class TrainingModule(pl.LightningModule):
                     target_modules = [
                         "q",
                         "v",
-                        "k",
+                        ".k",
                         "o",
                         "wi_0",
                         "wi_1",
