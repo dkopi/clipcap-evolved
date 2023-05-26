@@ -334,6 +334,9 @@ class TrainingModule(pl.LightningModule):
     ):
         super().__init__()
         self.save_hyperparameters()
+        # to support checkpoints without t5 kwarg
+        if "t5" not in kwargs:
+            kwargs["t5"] = False
         self.model = CaptioningModel(
             kwargs["direct"],
             kwargs["direct_proj"],
@@ -605,55 +608,59 @@ def train_model(
     if os.environ.get("SLURM_JOB_ID"):
         plugins.append(SLURMEnvironment(requeue_signal=signal.SIGUSR1))
 
-    training_module = TrainingModule(
-        samples_per_epoch=len(train_loader),
-        tokenizer=tokenizer,
-        clip_processor=clip_processor,
-        **kwargs,
-    )
-    wandb_logger.experiment.config[
-        "trainable_params"
-    ] = training_module.trainable_params
-    wandb_logger.experiment.config["total_params"] = training_module.total_params
+    if kwargs["eval_ckpt_path"] is None:
+        training_module = TrainingModule(
+            samples_per_epoch=len(train_loader),
+            tokenizer=tokenizer,
+            clip_processor=clip_processor,
+            **kwargs,
+        )
+        wandb_logger.experiment.config[
+            "trainable_params"
+        ] = training_module.trainable_params
+        wandb_logger.experiment.config["total_params"] = training_module.total_params
 
-    trainer = pl.Trainer(
-        default_root_dir=kwargs["checkpoint_path"],
-        accelerator="gpu" if not str(device).startswith("cpu") else "cpu",
-        devices=1,
-        max_epochs=kwargs["epochs"],
-        callbacks=[
-            ModelCheckpoint(
-                dirpath=kwargs["checkpoint_path"],
-                save_weights_only=True,
-                mode="min",
-                monitor="val_loss",
-            ),
-            LearningRateMonitor("step"),
-            TQDMProgressBar(refresh_rate=100),
-        ],
-        enable_progress_bar=True,
-        logger=wandb_logger,
-        log_every_n_steps=100,
-        val_check_interval=kwargs["val_freq"],
-        plugins=plugins,
-        gradient_clip_val=kwargs["grad_clip"],
-    )
+        trainer = pl.Trainer(
+            default_root_dir=kwargs["checkpoint_path"],
+            accelerator="gpu" if not str(device).startswith("cpu") else "cpu",
+            devices=1,
+            max_epochs=kwargs["epochs"],
+            callbacks=[
+                ModelCheckpoint(
+                    dirpath=kwargs["checkpoint_path"],
+                    save_weights_only=True,
+                    mode="min",
+                    monitor="val_loss",
+                ),
+                LearningRateMonitor("step"),
+                TQDMProgressBar(refresh_rate=100),
+            ],
+            enable_progress_bar=True,
+            logger=wandb_logger,
+            log_every_n_steps=100,
+            val_check_interval=kwargs["val_freq"],
+            plugins=plugins,
+            gradient_clip_val=kwargs["grad_clip"],
+        )
 
-    trainer.logger._default_hp_metric = None
+        trainer.logger._default_hp_metric = None
 
-    if find_lr:
-        print("using lr finder")
-        tuner = Tuner(trainer)
-        tuner.lr_find(training_module, train_loader, val_loader)
+        if find_lr:
+            print("using lr finder")
+            tuner = Tuner(trainer)
+            tuner.lr_find(training_module, train_loader, val_loader)
 
-    start = time.time()
-    trainer.fit(training_module, train_loader, val_loader)
-    print(f"training time: {(time.time() - start) / 3600}h")
-    print(f"best model: {trainer.checkpoint_callback.best_model_path}")
+        start = time.time()
+
+        trainer.fit(training_module, train_loader, val_loader)
+        print(f"training time: {(time.time() - start) / 3600}h")
+        print(f"best model: {trainer.checkpoint_callback.best_model_path}")
 
     start = time.time()
     model = TrainingModule.load_from_checkpoint(
-        trainer.checkpoint_callback.best_model_path,
+        trainer.checkpoint_callback.best_model_path
+        if kwargs["eval_ckpt_path"] is None
+        else kwargs["eval_ckpt_path"],
     )
     print(f"model load time: {(time.time() - start)}s")
 
@@ -791,7 +798,8 @@ def main():
     parser.add_argument("--direct", action="store_true")
     parser.add_argument("--direct_proj", action="store_true")
     parser.add_argument("--preload_train", action="store_true")
-    parser.add_argument("--t5", action="store_true")
+    parser.add_argument("--t5", action="store_true", default=False)
+    parser.add_argument("--eval_ckpt_path", default=None)
 
     args = parser.parse_args()
 

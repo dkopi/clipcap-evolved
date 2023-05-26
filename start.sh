@@ -60,6 +60,9 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/train.json --d
 ## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --lora --lora_target_modules all --run_name flan_mlp_base_proj_lora_all
 ## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --lora --lora_target_modules q v --run_name flan_mlp_base_proj_lora_part
 
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size large --direct_proj --arch flan-mlp --lora --lora_target_modules all --run_name flan_mlp_large_proj_lora_all
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size large --direct_proj --arch flan-mlp --lora --lora_target_modules q v --run_name flan_mlp_large_proj_lora_part
+
 
 ## proj+decoder - different mlp sizes
 
@@ -95,8 +98,8 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/train.json --d
 
 ## proj+decoder(t5)
 
-#! $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --t5 --run_name t5_mlp_base_proj
-#! $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --t5 --finetune_lm --run_name t5_mlp_base_proj_ft
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --t5 --run_name t5_mlp_base_proj
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --t5 --finetune_lm --run_name t5_mlp_base_proj_ft
 
 
 ## trans+decoder
@@ -107,7 +110,7 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/train.json --d
 
 ## baselines
 
-#! $shared_part --lr 2e-5 --arch clipcap --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --prefix_length 40 --run_name clipcap_trans
+## $shared_part --lr 2e-5 --arch clipcap --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --prefix_length 40 --run_name clipcap_trans
 ## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --run_name clipcap_mlp
 ## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --finetune_lm --run_name clipcap_mlp_ft
 
@@ -115,6 +118,33 @@ shared_part="srun python train.py --annotations_file $TMPDIR/data/train.json --d
 ## proj+gpt
 ## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps  --direct_proj --run_name clipcap_mlp_proj
 ## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps  --direct_proj --finetune_lm --run_name clipcap_mlp_proj_ft
+
+
+
+# ================== REEVALS ========================
+
+
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --t5 --eval_ckpt_path /tmp/pl_checkpoints/66601/epoch=9-step=141680.ckpt --run_name t5_mlp_base_proj #node009
+## $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --t5 --finetune_lm --eval_ckpt_path /tmp/pl_checkpoints/66602/epoch=9-step=141680.ckpt --run_name t5_mlp_base_proj_ft #node007
+
+## $shared_part --lr 2e-5 --arch clipcap --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --prefix_length 40 --eval_ckpt_path /tmp/pl_checkpoints/66361/epoch=3-step=56672.ckpt --run_name clipcap_trans #node011
+
+
+
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --eval_ckpt_path /tmp/pl_checkpoints/66362/epoch=4-step=70840.ckpt --run_name clipcap_mlp #node012
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --eval_ckpt_path /tmp/pl_checkpoints/66363/epoch=5-step=85008.ckpt --finetune_lm --run_name clipcap_mlp_ft #node013
+
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --finetune_lm --arch flan-t5 --flan_size base --eval_ckpt_path /tmp/pl_checkpoints/66360/epoch=9-step=141680.ckpt --run_name flant5_base_ft #node009
+
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --finetune_lm --eval_ckpt_path /tmp/pl_checkpoints/66369/epoch=9-step=141680.ckpt --run_name flan_mlp_base_proj_ft #node007
+
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size small --direct_proj --arch flan-mlp --finetune_lm --eval_ckpt_path /tmp/pl_checkpoints/66367/epoch=9-step=141680.ckpt --run_name flan_mlp_small_proj_ft #node026
+
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size small --direct_proj --arch flan-mlp --eval_ckpt_path /tmp/pl_checkpoints/66366/epoch=8-step=127512.ckpt --run_name flan_mlp_small_proj #node025
+
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size base --direct_proj --arch flan-mlp --eval_ckpt_path /tmp/pl_checkpoints/66368/epoch=5-step=85008.ckpt --run_name flan_mlp_base_proj #node006
+
+# $shared_part --mlp_hidden_size 3840 --lr 2e-5 --batch_size 40 --no_cosine --warmup 5000 --warmup_use_steps --flan_size large --direct_proj --arch flan-mlp --eval_ckpt_path /tmp/pl_checkpoints/66399/epoch=7-step=113344.ckpt --run_name flan_mlp_large_proj #node012
 
 
 
