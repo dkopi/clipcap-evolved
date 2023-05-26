@@ -1,0 +1,12 @@
+.venv
+__pycache__
+data
+logs
+checkpoints
+wandb
+todo.txt
+clipcap_evolved
+output.err
+output.out
+test.sh
+answers
