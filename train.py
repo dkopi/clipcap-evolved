@@ -472,6 +472,36 @@ class TrainingModule(pl.LightningModule):
             self.log("trainable_params", float(self.trainable_params))
             self.log("total_params", float(self.total_params))
 
+    def test_step(self, batch, batch_idx):
+        tokens, mask, images = batch
+
+        if batch_idx == 0:
+                image_embeds = self.model.get_image_embeds(images)
+                captions = generate(
+                    self.model,
+                    self.hparams.tokenizer,
+                    image_embeds,
+                    arch=self.hparams.arch,
+                )
+                for caption in captions:
+                    print(f"\ncaption: {caption}\n")
+
+        if batch_idx < self.hparams.eval_batches:
+            scores = evaluate(
+                self.model,
+                self.hparams.tokenizer,
+                images,
+                tokens,
+                arch=self.hparams.arch,
+            )
+            self.log("cider", scores["cider"], prog_bar=True)
+            #self.log("spice", scores["spice"], prog_bar=True)
+
+        loss = self.get_loss(tokens, images, mask)
+
+        self.log("val_loss", loss, prog_bar=True)
+        self.log("trainable_params", float(self.trainable_params))
+        self.log("total_params", float(self.total_params))
 
 def train_model(
     batch_size,
