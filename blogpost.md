@@ -2,6 +2,7 @@
 
 *28 Mar 2023* | *Authors: Dawid, Abishek, Dheeraj, Priyakshi, Tom*
 
+![](images/coco_1.png)
 
 Image captioning is a challenging vision-language task that involves automatically generating relevant and valid captions that describes the content of an image. 
 
