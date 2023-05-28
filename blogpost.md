@@ -127,7 +127,7 @@ We begin by replicating the ClipCap architectures to establish baseline performa
 
 ##### ClipCap, The Transformer Approach
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-![baseline_2](images/baseline_2.png)
+![baseline_2](images/Baseline_2.png)
 
 
 ### Language Model Architecture Matters
