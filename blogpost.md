@@ -389,9 +389,8 @@ For the LoRA experiments, we use the following hyperparameters
 | FLAN-T5 (Decoder)-base     | 163     | 108.81       | 20.24                | 1.127  <span style="color:green"> **(0.69%)** </span> | 102.29 <span style="color:red"> **(-6.52)** </span> | 19.43 <span style="color:red"> **(-0.81)** </span> | 0.295  <span style="color:green"> **(0.18%)** </span> | 101.12 <span style="color:red"> **(-7.68)** </span> | 19.2 <span style="color:red"> **(-1.04)** </span> |
 | FLAN-T5 (Decoder)-small    | 58.5    | 103.60       | 19.64                 | 0.507  <span style="color:green"> **(0.87%)** </span> | 98.69 <span style="color:red"> **(-4.91)** </span> | 18.94 <span style="color:red"> **(-0.7)** </span> | 0.115  <span style="color:green"> **(0.2%)** </span>| 95.09 <span style="color:red"> **(-8.5)** </span> | 18.73 <span style="color:red"> **(-0.9)** </span> |
 
-We can observe from the obtained results that the models when trained with LoRA, shows a significant  deacrease in trainable parameters (~99.5% reduction on an average), while achieving a comparable but lower scores on both CIDEr and SPICE metrics
+We can observe from the obtained results that the models when trained with LoRA, shows a significant  deacrease in trainable parameters (~99.5% reduction on an average), while achieving a comparable but lower scores on both CIDEr and SPICE metrics.
 
-We 
 ### T5 Weights
 
 We conducted a performance comparison on selected FLAN-T5 architectures with different weights: FLAN-T5 and original T5. To assess this comparison, we have selected the best performing model on the COCO dataset, which is the finetuned FLAN-T5 Decoder only with unpooled representations, and its version with the frozen LM.
@@ -432,7 +431,7 @@ Surprisingly, the highest performing model on nocaps dataset is finetuned GPT-2 
 
 ### Qualitative Results
 
-Using THumb to do the human evaluation on COCO and NOCAPS we define precision (P : from 0 to 5), which refers to how accurate and relevant the caption is, and recall (R : from 0 to 5), which measures the extent to which the caption covers important information from the image. Additionally, we considered the fluency (F : between -1 and 0) of the sentence. The toal score (Total) is the average between precision and recall adjusted by the fluency penalty. Each caption is followed by a table of the different scores as following : [Total, P, R, F]
+Using THumb to do the human evaluation on COCO and NOCAPS we define precision (P : from 0 to 5), which refers to how accurate and relevant the caption is, and recall (R : from 0 to 5), which measures the extent to which the caption covers important information from the image. Additionally, we considered the fluency (F : between -1 and 0) of the sentence. The total score (Total) is the average between precision and recall adjusted by the fluency penalty. Each caption is followed by a table of the different scores as following : [Total, P, R, F]
 
 ##### COCO
 
@@ -485,13 +484,13 @@ In our evaluation, the FLAN-T5 models consistently achieve higher scores on the 
 
 The distinguishing factor between these models lies primarily in the LM, while the other parameters remain consistent. One possible explanation for this observation is that, despite FLAN-T5 being trained on a diverse set of tasks, it may not possess the same level of robustness as GPT2, which benefits from being trained on a vast and diverse range of data. This suggests that the diversity of data that the LM has been exposed to may play a crucial role in the it's ability to generalize and produce accurate captions across different datasets.
 
-Another notable observation is the impact of using unpooled representations projected with an MLP on the model's performance. Specifically, we observed that it generally improves results when finetuning the language model, but worsens performance otherwise. This can be attributed to the fact that unpooled representations process each token individually, providing more local information about the image. As a result, the language model needs to adapt to effectively utilize this information, whereas the baseline method can generate suitable captions relying on the prefix alone.
+Another notable observation is the impact of using unpooled representations projected with an MLP on the model's performance. Specifically, we observed that it generally improves results when finetuning the language model, but worsens performance otherwise. This can be attributed to the fact that unpooled representations are processed individually by MLP, providing mostly local information about the image. As a result, the language model needs to adapt to effectively utilize this information, whereas the baseline method can generate suitable captions relying on the prefix alone, which contains processed information from pooled representations.
 
 Our findings also indicate that employing an MLP with a hidden layer size of just 512 neurons is sufficient for proper projection of CLIP's unpooled representations into the FLAN-T5 decoder's representation space. This yields satisfactory results while keeping the number of trainable parameters at only 7 million.
 
 Furthermore, our comparison of T5 and FLAN-T5 weights revealed a significant drop in performance for the frozen T5 version. This confirms that FLAN, as a finetuning method, greatly enhances the model's robustness and its ability to handle new tasks.
 
-In conclusion, we achieved better performance on COCO and nocaps datasets with less trainable parameters through our proposed approaches. FLAN-T5 architectures consistently demonstrated superior results, especially Decoder only variants. By leveraging unpooled representations and applying fine-tuning, the performance gain provides empirical evidence supporting our hypothesis that unpooled representations contain useful image-specific information that can be effectively utilized for captioning. We found that using LoRA, we can reduce the number of trainable parameters significantly, while still achieving similar results to the baselines, with a slight drop in performance. These findings contribute to advancing the field of image captioning and provide valuable insights for developing more efficient and accurate models in the future.
+In conclusion, we achieved better performance on COCO and nocaps datasets with less trainable parameters through our proposed approaches. FLAN-T5 architectures consistently demonstrated superior results, especially Decoder only variants. By leveraging unpooled representations and applying fine-tuning, the performance gain provides empirical evidence supporting our hypothesis that unpooled representations contain useful image-specific information that can be effectively utilized for captioning. We found that using LoRA, we can reduce the number of trainable parameters significantly, while still achieving similar results to the baselines, with a slight drop in performance. We believe, these findings can contribute to advancing the field of image captioning and provide valuable insights for developing more efficient and accurate models in the future.
 
 
 ## Further Work
@@ -517,9 +516,11 @@ Dawid Kopiczko:
 - Implemented utilities including storing captions for evalai benchmark
 - Exploring different approaches and methods not included in the final work/report:
     - unpooled representations without projection, with fine-tuning of language model
-    - use of different CLIP models, cosine scheduler
-    - gradient clipping, MLP with dropout, more hidden layers, and different activations
-    - flattened unpooled CLIP representations
+    - use of different CLIP models
+    - cosine scheduler
+    - gradient clipping
+    - MLP with dropout, more hidden layers, and different activations
+    - flattened unpooled CLIP representations processed by wide MLP
 - Writing blogpost
 
 Tom Pelletreau-Duris:
