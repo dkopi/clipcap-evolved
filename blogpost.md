@@ -1,34 +1,33 @@
-# ClipCap Evolved
 
-*28 Mar 2023* | *Authors: Dawid, Abishek, Dheeraj, Priyakshi, Tom*
+# ClipCap Evolved - Bridging the Gap Between Modalities
 
-![](images/coco_1.png)
+*28 Mar 2023* | *Authors: Dawid Kopiczko, Abishek, Dheeraj, Priyakshi Goswami, Tom Pelletreau-Duris*
+
 
 Image captioning is a challenging vision-language task that involves automatically generating relevant and valid captions that describes the content of an image. 
 
-Over the years, various approaches have been proposed to tackle this task, with different architectures and training methods being employed. Traditionally, most image captioning pipelines rely on a combination of a visual encoder to encode visual information and a textual decoder that generates captions based on the encoded features. Earlier deep learning based image captioning approaches typically used CNN-encoders and RNN-language models ([Karpathy et al.](https://arxiv.org/abs/1412.2306), [Vinyals et al.](https://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Vinyals_Show_and_Tell_2015_CVPR_paper.pdf)), however with recent trends [Transformer](https://arxiv.org/abs/1706.03762)-based models have gained popularity. The visual feature extraction stage has also seen significant changes, moving towards the use of multi-modal architectures trained on large-scale data with language supervision, as seen in models like [CLIP (Contrastive Language-Image Pretraining)](https://arxiv.org/abs/2103.00020).  
+Over the years, various approaches have been proposed to tackle this task, with different architectures and training methods being employed. Traditionally, most image captioning pipelines rely on a combination of a visual encoder to encode visual information and a textual decoder that generates captions based on the encoded features. Earlier deep learning based image captioning approaches typically used CNN-encoders and RNN-language models ([Karpathy et al.](https://arxiv.org/abs/1412.2306), [Vinyals et al.](https://www.cv-foundation.org/openaccess/content_cvpr_2015/papers/Vinyals_Show_and_Tell_2015_CVPR_paper.pdf)), however with recent trends [Transformer](https://arxiv.org/abs/1706.03762)-based models have gained popularity. The visual feature extraction stage has also seen significant changes, moving towards the use of multi-modal architectures trained on large-scale data with language supervision, as seen in models like [CLIP (Contrastive Language-Image Pretraining)](https://arxiv.org/abs/2103.00020).
 
 One prevalent approach to image captioning involves utilizing pretrained vision and language models, which are then fine-tuned. Our baseline approach, called [ClipCap](https://arxiv.org/abs/2111.09734), adheres to this paradigm by employing CLIP-ViT as the visual encoder and GPT-2 as the textual decoder. In their approach, the image embeddings are sent as prefixes of captions to the Language Model (LM) which then generates the next token. Alternative approaches like [Flamingo](https://arxiv.org/abs/2204.14198) and [VC-GPT](https://arxiv.org/abs/2201.12723) fuse visual information from the encoder directly into the layers of a pre-trained LM using a cross attention mechanism.
 
 In this blog post, we share our work building upon ClipCap and address key research questions. We review the background and key components, including models and fine-tuning techniques. Our proposed methods are presented, highlighting improvements over the baseline. We also discuss our experiments, results, and future directions.
+
+*The "Background and Key Components" section offers a brief overview of CLIP, language models, and parameter-efficient fine-tuning methods. It aims to familiarize readers with these essential aspects before diving into the main part. If you are already familiar with these concepts, feel free to skip this section and proceed further.*
 
 
 ## Introducing ClipCap
 
 The authours of ClipCap propose a simple yet effective technique to generate captions. As mentioned before, CLIP is utilised to extract the visual embeddings of the image, which is the condensed representation of the content. This is used as a prefix to the GPT2 input, which then generates the caption based on both the image and the prefix. A simple mapping network is employed to transform the embedding into a compatible format for GPT2. They follow two approaches,
 
-1. Using an MLP mapper, alongwith finetuning GPT2
+1. Using an MLP mapper, along with finetuning GPT2
 2. Using a transformer mapper
 
 Their second approach demonstrate that training the mapping network alone can yield competent captioning results while keeping CLIP and the LM frozen.
 
-At the time of their publication, this method achieved comparable performance to State-Of-The-Art approaches on challenging datasets such as Conceptual Captions and nocaps, while being simpler, faster, and lighter. However, it is worth noting a couple of potential weaknesses. Firstly, they failed to explore the utility of unpooled visual representations, which may affect its ability to capture fine-grained visual details; and the limited evaluation with different language models, which may leave room for further exploration and analysis.
+![](https://s3.hedgedoc.org/demo/uploads/3ee17fc6-f181-499e-adbc-31c4438f258e.png)
 
-<!-- First, ClipCap does not utilize unpooled CLIP-ViT representations, which may limit its ability to capture fine-grained visual details. Additionally, the approach has not been extensively tested with different language models, leaving room for further exploration and analysis.
 
-<!-- Motivation fused -->
-
-<!-- We wanted to extend this idea by using different language models and different ways of fusing the visual and textual features. Specifically, we used [FLAN-T5](https://huggingface.co/flax-community/flant5), a fined-tuned version of the original pretrained encoder-decoder T5 architecture introduced in 2019. We also experimented with using shared MLPs on unpooled representations from CLIP-ViT, which can potentially preserve more information from the image patches. -->
+At the time of their publication, this method achieved comparable performance to State-Of-The-Art approaches on challenging datasets such as Conceptual Captions and nocaps, while being simpler, faster, and lighter. However, it is worth noting a couple of potential weaknesses. Firstly, they failed to explore the utility of unpooled visual representations, which may affect its ability to capture fine-grained visual details; and the limited evaluation with different language models, which may leave room for further exploration and analysis. This is exactly what inspired us to explore and pursue this research direction.
 
 
 ## Background and Key Components
@@ -38,7 +37,7 @@ In this section, we introduce the essential models and methods that serve as bui
 
 ### CLIP-ViT
 
-Contrastive Language Pre-Training(CLIP) is an efficient method of learning  from natural language supervision developed by OpenAI. Designed to understand and generate meaningful associations between text and images, CLIP models are effective multimodal vision language models that can be used for a range of tasks, including zero-shot image classification and image-text similarity. 
+Contrastive Language Pre-Training (CLIP) is an efficient method of learning  from natural language supervision developed by OpenAI. Designed to understand and generate meaningful associations between text and images, CLIP models are effective multimodal visual language models that can be used for a range of tasks, including zero-shot image classification and image-text similarity. 
 
 #### Architecture
 CLIP architecture consists of two main components, a text encoder, and an image encoder. These two encoders are jointly trained using a contrastive learning approach to predict the correct pairings of a batch of training (image, text) examples. The CLIP model encodes textual and visual information into a multimodal embedding space, with an aim to increase the cosine similarity score of images and text representations. 
@@ -75,19 +74,9 @@ There are several sizes of GPT-2 available:
 
 ### FLAN-T5
 
-[Flan-T5](https://arxiv.org/abs/2210.11416) is a fine-tuned version the original [T5 architecture](https://arxiv.org/abs/1910.10683) intoduced by Google in 2019. 
+[Flan-T5](https://arxiv.org/abs/2210.11416) is an enhanced version of the original [T5 architecture](https://arxiv.org/abs/1910.10683) intoduced by Google in 2019. The T5 (Text-to-Text Transfer Transformer) architecture is built on standard encoder-decoder transformer. The encoder processes the input text, generating a representation that captures contextual information and semantic understanding. This representation serves as a conditioning signal for the decoder. The decoder, in turn, attends to this representation, which uses it to generate the output text gradually.
 
-#### T5 (Text-to-Text Transfer Transformer)
-
-The T5 architecture is built on standard encoder-decoder transformer architecture leveraging an attention mechanism to process sequential data efficiently. Both the encoder and decoder consist of blocks made of self-attention and a feed-forward network, while decoder also contains cross-attention layers. Notably, the decoder's self-attention mechanism also employs an autoregressive or causal self-attention, allowing the model to attend only to past outputs during decoding.
-
-The encoder processes the input text, generating a representation that captures contextual information and semantic understanding. This representation serves as a conditioning signal for the decoder. The decoder, in turn, attends to the conditioned representation and generates the output text step by step, incorporating the conditional signal at each decoding step.
-
-During pre-training, T5 undergoes training on a large corpus of unlabeled text data to learn generalizable knowledge. T5 takes a "text-to-text" approach, where all NLP tasks are formulated as text-to-text problems. This formulation allows T5, once pre-trained on a large corpus, to be fine-tuned on multiple downstream tasks with minimal modifications, making it highly adaptable and efficient. 
-
-#### Flan-T5 (Fine-tuned Language Net)
-
-With the same number of parameters as T5, Flan-T5 takes the solid foundation of T5 and enhances it further by fine-tuning it on over 1000 additional tasks, expanding its coverage of languages and task domains.
+T5 follows a "text-to-text" approach, where all NLP tasks are framed as text-to-text problems. This allows T5 to be fine-tuned on various downstream tasks with minimal modifications, making it highly versatile. FLAN-T5 (Fine-tuned Language Net) improves upon T5 by fine-tuning it on a diverse set of tasks that cover various languages and domains. This enables FLAN-T5 to achieve state-of-the-art performance on several benchmarks.
 
 Flan-T5 model offers 5 different variants:
 
@@ -143,7 +132,7 @@ We begin by replicating the ClipCap architectures to establish baseline performa
 
 ClipCap utilized GPT2, a decoder-only transformer, to generate tokens autoregressively. While this approach proved effective, we sought to optimize it further by introducing an additional conditioning signal to the cross-attention layers. This insight was inspired by techniques used in the Flamingo paper. The addition of a conditioning signal to the decoder blocks is hypothesized to enhance caption generation performance. This signal delivers an additional layer of context at each decoding step, thus facilitating the decoder to construct more accurate and coherent output.
 
-Based on this observation, we explore the use of encoder-decoder models as a promising direction. This resulted in our incorporation of the **Flan-T5** model into the ClipCap architecture. The decision to integrate Flan-T5 into ClipCap was motivated by its versatility in handling a multitude of tasks, each one encoded by the encoder. This presents a unique opportunity for improving the caption prediction process. By feeding a prefixed sentence to the encoder block, we are priming the decoder, theoretically enabling it to predict captions more effectively. This is predicated on the hypothesis that the encoder's capacity to embed different tasks will substantially enhance the decoder's proficiency in generating precise and pertinent captions.
+Based on this observation, we explore the use of encoder-decoder models as a promising direction. This resulted in our incorporation of the Flan-T5 model into the ClipCap architecture. The decision to integrate Flan-T5 into ClipCap was motivated by its versatility in handling a multitude of tasks, each one encoded by the encoder. This presents a unique opportunity for improving the caption prediction process. By feeding a prefixed sentence to the encoder block, we are priming the decoder, theoretically enabling it to predict captions more effectively. This is predicated on the hypothesis that the encoder's capacity to embed different tasks will substantially enhance the decoder's proficiency in generating precise and pertinent captions.
 
 #### Using FLAN-T5 as the LM
 ![CLIP-VIT/32 + MLP + FLAN-T5](https://s3.hedgedoc.org/demo/uploads/eb688bed-ae5f-47e0-9a9e-96d8d4e9d36d.png)
@@ -165,7 +154,7 @@ Another approach in our exploration involves utilising only the decoder componen
 
 In order to enhance the utilization of visual representations in our models, we propose a departure from using pooled and projected features. Instead, we advocate for leveraging the unpooled representations, which capture more comprehensive visual information. By preserving the richness of visual details that can be lost through pooling and projection, we aim to provide the language model with a more robust and nuanced image representation.
 
-To effectively incorporate these unpooled visual tokens into our models, we take steps to align the representation spaces of the visual and language models. This involves passing the visual tokens through a Multilayer Perceptron (MLP) with shared weights for all tokens. The MLP serves the purpose of retaining valuable information from each visual token, ensuring that no useful details are overlooked. Subsequently, these refined tokens are fed into the language model. For GPT2 and Flan-T5, they act as the prefix, while for the Flan-T5 decoder, they serve as the entire conditioning signal. We anticipate that this tweak will result in improved performance.
+To effectively incorporate these unpooled visual tokens into our models, we take steps to align the representation spaces of the visual and language models. This involves passing the visual tokens through a Multilayer Perceptron with shared weights for all tokens. Subsequently, these refined tokens are fed into the language model. For GPT2 and Flan-T5, they act as the prefix, while for the Flan-T5 decoder, they serve as the entire conditioning signal. We anticipate that this tweak will result in improved performance.
 
 ![CLIP-Projections](https://s3.hedgedoc.org/demo/uploads/73177a2b-9659-41d3-9fea-483551cba252.png)
 
@@ -174,7 +163,7 @@ The shared MLP projects the visual tokens that are not pooled. This means we uti
 ### Parameter-Efficient Fine-tuning with LoRA
 
 
-Translating between the representations of image encoder (CLIP) and the language model was a challenge faced by the authours of ClipCap. This is owed to their independent training, leading to separate latent spaces. To address this, the authors emphasize the need for fine-tuning the Language Model (LM) within the mapping network training. However, it is to be noted that fine-tuning the LM substantially escalates the number of trainable parameters (~156M for GPT2). As an alternative approach, the authors freeze the LM and replace the MLP mapping network with a transformer, effectively reducing the trainable parameters to ~43M.
+Translating between the representations of image encoder of CLIP and the language model was a challenge faced by the authors of ClipCap. This is owed to the independent training of both models, leading to separate latent spaces. To address this, the authors emphasize the need for fine-tuning the Language Model (LM) along with the mapping network training. However, it is to be noted that fine-tuning the LM substantially escalates the number of trainable parameters (~156M for GPT2). As an alternative approach, the authors freeze the LM and replace the MLP mapping network with a transformer, effectively reducing the trainable parameters to ~43M.
 
 To further optimize the model, we experiment with LoRA, a parameter efficient fine tuning technique. We apply LoRA to the baseline architecture (MLP mapper + GPT2) and our best-performing models. We also test it across all layers as well as a subset of layers of the LM.
 
@@ -201,11 +190,11 @@ The configuration of the transformer mapper:
 | LM Prefix Length   | 10                |
 
 
-### Naming Conventions and Experimental Runs
+<!-- ### Naming Conventions and Experimental Runs
 
 We provide a table with naming conventions for different experimental runs to ensure clear understanding and easy reference.
 
-(table)
+(table) -->
 
 ## Methodology
 
@@ -222,138 +211,285 @@ Our methodology involved running each model through 10 training epochs. To captu
 
 ### Datasets
 
-Choosing good datasets is a critical step for training and evaluating. The notion of "good dataset" in the context of visual-language tasks relies mainly on the diversity of context, topics and entities that the image and captions are covering. Following the original paper, we used the two datasets COCO and NOCAPS, both considered state-of-the-art datasets for image captioning modelling.
+Choosing good datasets is a critical step for training and evaluating. The notion of "good dataset" in the context of visual-language tasks relies mainly on the diversity of context, topics and entities that the image and captions are covering. Following the original paper, we used the two datasets, COCO and NOCAPS, both considered state-of-the-art datasets for image captioning modelling (.
 
-Similar to ClipCap work, we use COCO dataset to train models, and both, COCO and nocaps, to evaluate them.
-
-The authors of the ClipCap paper also train their model on the large [Conceptual Caption (CoCa)](https://aclanthology.org/P18-1238/) dataset. However, due to the substantial computational resources and time required to process CoCa's extensive collection of over 3 million images, we opted not to use this dataset.
+Similar to ClipCap work, we use COCO dataset to train models, and both, COCO and nocaps, to evaluate them. The authors of the ClipCap paper also train and evaluate their models on the large [Conceptual Caption (CoCa)](https://aclanthology.org/P18-1238/), separately from the model trained on COCO. However, due to the substantial computational resources and time required to process CoCa's extensive collection of over 3 million images, we opted not to use this dataset.
 
 
 #### COCO
 
-[COCO (Common Objects in Context)](https://arxiv.org/abs/1405.0312) is a large-scale dataset for image recognition, segmentation, and captioning. It contains over 200K images and 1.2M captions. We used the [Karpathy split](https://cs.stanford.edu/people/karpathy/deepimagesent/) for our experiments, which is the same as used in ClipCap and [OSCAR](https://arxiv.org/abs/2004.06165). The Karpathy split divides the dataset into 113K training images, 5K validation images, and 5K test images.
+[COCO (Common Objects in Context)](https://arxiv.org/abs/1405.0312) is a large-scale dataset for image recognition, segmentation, and captioning. It contains over 200K images and 1.2M captions. We used the [Karpathy split](https://cs.stanford.edu/people/karpathy/deepimagesent/) for our experiments, which is the same as used in the ClipCap work. The Karpathy split divides the dataset into 113K training images, 5K validation images, and 5K test images.
 
 We train our models on the training set, and perform evaluation on the test one.
 
 #### NOCAPS
 
-[NOCAPS (Novel Object CAPtioning dataset)](https://arxiv.org/abs/1812.08658) contains over 166K images and 1.5M captions. It is designed to measure the robustness and generalization of image captioning models to novel objects and concepts. It consists of three subsets: in-domain (similar categories than COCO), near-domain (similar categories than Open Images and COCO eventually), and out-domain (no shared categories or entities). Unlike direct annotation datasets such as COCO Captions, or filtered datasets such as Conceptual Captions, Nocaps has a larger and more diverse set of image classes and captions. Therefore, NOCAPS is more desirable than COCO or Conceptual Caption datasets, as it encourages the development of image captioning models that can learn visual concepts from other data sources, generalise better and therefore be considered more robust (Wang et al., 2022).
+[NOCAPS (Novel Object CAPtioning dataset)](https://arxiv.org/abs/1812.08658) contains over 166K images and 1.5M captions. It is designed to measure the robustness and generalization of image captioning models to novel objects and concepts. It consists of three subsets: in-domain (containing only COCO classes), near-domain (contains both COCO and novel classes), and out-of-domain (contains only novel classes).
 
-Same as in the ClipCap work, for the evaluation we use the validation set, which contains 9K images.
-
-Specifically, we were more attentive to analyse results from the out-of-domain subset as it reflects the most challenging tasks. Models trained only on COCO data are likely to make [‘embarrassing errors’](https://arxiv.org/pdf/1612.00370.pdf) on this subset, reflecting the current performance of COCO trained models in the wild.
+Similar to the approach taken in the original ClipCap study, we use a validation set containing 9K images for model evaluation. We paid particular attention to analyzing results from the out-of-domain subset, given its complexity and the challenging tasks it represents. Models that are exclusively trained on COCO data are prone to making significant errors on this subset, thus providing a realistic representation of the performance of COCO-trained models in real-world situations. 
 
 ### Evaluation
 
 We evaluated our models on both quantitative and qualitative metrics.
 
-#### Generation / Inference
+#### Generation
 
-For the caption generation, the exact procedure from the original ClipCap paper is not clearly defined. To ensure consistency across our evaluations, we decided to implement a uniform approach by adopting a greedy search algorithm for all models. This strategy picks the most likely word at each step in the sequence, with the maximum length of the caption set at 67 tokens.
+For the caption generation, the exact procedure from the original ClipCap paper is not clearly defined. To ensure consistency across our evaluations, we decided to implement a uniform approach by adopting a greedy search algorithm for all models. This strategy picks the most likely word at each step in the sequence, with the maximum length of the caption set to 67 tokens.
 
 #### Quantitative Evaluation
 
 ##### Evaluation metrics
 
-Image captioning is a notoriously difficult task to evaluate due to its inherent ambiguity (Cui et al., 2018). Human evaluation scores are reliable but expensive to obtain and not reproducible. Thus, current image captioning models are usually evaluated with automatic evaluation metrics. Similar to the Clipcap paper, we validate our model over the COCO dataset using the considered state-of-the-art metrics [CIDEr](https://arxiv.org/abs/1411.5726) and [SPICE](https://arxiv.org/abs/1607.08822). We decided to discard [BLEU](https://aclanthology.org/P02-1040/), ROUGE-L and [METEOR](https://aclanthology.org/W14-3348/) now considered out-dated. 
+Image captioning is a notoriously difficult task to evaluate due to its inherent ambiguity (Cui et al., 2018). Human evaluation scores are reliable but expensive to obtain and not reproducible. Thus, current image captioning models are usually evaluated with automatic evaluation metrics. Similar to the Clipcap paper, we validate our model over the COCO and nocaps datasets using the [CIDEr](https://arxiv.org/abs/1411.5726) and [SPICE](https://arxiv.org/abs/1607.08822) metrics. We decided to discard [BLEU](https://aclanthology.org/P02-1040/), [ROUGE-L](https://aclanthology.org/W04-1013.pdf) and [METEOR](https://aclanthology.org/W14-3348/) now considered out-dated [(Cui et al., 2018)](http://arxiv.org/abs/1806.06422). 
 
-Most of the metrics in common use for caption evaluation are based on n-gram matching and measure the word overlap and semantic similarity between the generated captions and the reference captions from the datasets. The most known ones are BLEU, ROUGE and METEOR. But recently (Anderson et al., 2016) they have been outdated in their evaluation range capabilities. Indeed, more complex and robustness-measuring metrics have been developed and they are now considered state-of-the-art metrics (Anderson et al., 2016). First, previous metrics were primarily sensitive to n-gram overlap which made them sensitive to the size of the dataset. On the other hand, the novel metrics are size-independent and have been shown to have the strongest correlation with human judgments (Liu et al., 2017) and have been used in prior novel object captioning work (Anderson et al., 2018; Hendricks et al., 2016; Lu et al., 2018). In particular, To overcome the limitations of existing n-gram based automatic evaluation metrics, SPICE hypothesises that semantic propositional content is an important component of human caption evaluation and estimates caption quality by transforming both candidate and reference captions into a graph-based semantic representation called a scene graph, which make it more content-equivariant. The scene graph explicitly encodes the objects, attributes and relationships found in image captions, abstracting away most of the lexical and syntactic idiosyncrasies of natural language in the process.
+Most of the metrics in common use for caption evaluation are based on n-gram matching and measure the word overlap and semantic similarity between the generated captions and the reference captions from the datasets. The most known ones are BLEU, ROUGE and METEOR. However, they have been outdated in their evaluation range capabilities, and more complex and robustness-measuring metrics have been developed, which are now considered [state-of-the-art metrics](http://arxiv.org/abs/1607.08822). First, previous metrics were primarily sensitive to n-gram overlap which made them sensitive to the size of the dataset. On the other hand, the novel metrics are size-independent and have been shown to have the [strongest correlation with human judgments](https://doi.org/10.1109/ICCV.2017.100). In particular, To overcome the limitations of existing n-gram based automatic evaluation metrics, SPICE hypothesises that semantic propositional content is an important component of human caption evaluation and estimates caption quality by transforming both candidate and reference captions into a graph-based semantic representation called a scene graph, which make it more content-equivariant. The scene graph explicitly encodes the objects, attributes and relationships found in image captions, abstracting away most of the lexical and syntactic idiosyncrasies of natural language in the process.
 
-CIDEr [cider paper] applies term frequency-inverse document frequency (tfidf) weights to n-grams in the candidate and reference sentences, which are then compared by summing their cosine similarity across n-grams. It is worth noting that CIDEr score is the only one that ranges from 0 to infinity. The score is calculated using the average cosine similarity between the candidate sentence and the reference sentences. The score can be greater than 1 if the candidate sentence is more similar to the reference sentences than the reference sentences are to each other. Being an F-score, SPICE [spice paper] is simple to understand, and easily interpretable as it is naturally bounded between 0 and 1. Unlike CIDEr, SPICE does not use cross-dataset statistics, such as corpus word frequencies, and is therefore equally applicable to both small and large datasets. 
-In summary, while CIDEr focuses on consensus and overall relevance, SPICE centers on semantic propositions. The CIDEr metric assesses how well the machine-generated caption aligns with the consensus annotations of human captions for the same image. If the caption reflects the overall content and significance of the image, and is similar to the consensus captions, it receives a high CIDEr score. The SPICE metric, on the other hand, evaluates the precision and recall of semantic propositions in the machine-generated caption. It analyses how accurately the caption represents the semantic relationships within the image. If the caption correctly identifies the presence of people, a picnic, and a park, and expresses their relationships accurately, it will receive a high SPICE score. In summary, while CIDEr focuses on consensus and overall relevance, SPICE centers on semantic propositions.
+[CIDEr](http://arxiv.org/abs/1411.5726) applies term frequency-inverse document frequency (tfidf) weights to n-grams in the candidate and reference sentences, which are then compared by summing their cosine similarity across n-grams. It is worth noting that CIDEr score is the only one that ranges from 0 to infinity. The score is calculated using the average cosine similarity between the candidate sentence and the reference sentences. The score can be greater than 1 if the candidate sentence is more similar to the reference sentences than the reference sentences are to each other. Being an F-score,  [SPICE](http://arxiv.org/abs/1607.08822) is simple to understand, and easily interpretable as it is naturally bounded between 0 and 1. Unlike CIDEr, SPICE does not use cross-dataset statistics, such as corpus word frequencies, and is therefore equally applicable to both small and large datasets. 
+In summary, while CIDEr focuses on consensus and overall relevance, SPICE centers on semantic propositions. The CIDEr metric assesses how well the machine-generated caption aligns with the consensus annotations of human captions for the same image. If the caption reflects the overall content and significance of the image, and is similar to the consensus captions, it receives a high CIDEr score. The SPICE metric, on the other hand, evaluates the precision and recall of semantic propositions in the machine-generated caption. It analyses how accurately the caption represents the semantic relationships within the image. If the caption correctly identifies the presence of people, a picnic, and a park, and expresses their relationships accurately, it will receive a high SPICE score.
 
-We evaluate on COCO following the [OSCAR methodology](http://arxiv.org/abs/2004.06165) and we rewrote the script to adapt it to our pipeline, using the test set only and reformating the annotation file before tokenize the captions with ptb tokenizer to finally pass them as dictionaries to pycocoevalcap which run CIDEr and SPICE.
-We did the same with NOCAPS, reformating the annotation file in three subsets in order to submit it to pycocoevalcap. Our results were not exactly the same locally and on the official evaluation server [Evalai](https://eval.ai/web/challenges/challenge-page/355) so we show only metrics results from the official evaluation server.
+We evaluate on COCO locally following the [OSCAR methodology](http://arxiv.org/abs/2004.06165), same as done in ClipCap, while for the NOCAPS dataset, we submit generated captions to the official nocaps challange on the [EvalAI](https://eval.ai/web/challenges/challenge-page/355) evaluation server.
 
-In order to rank our models we were interested in reporting their main characteristics  : their *total number of parameters*, their *total number of trainable parameters* as it’s a popular measure to indicate model feasibility, and the *estimated training time* (as it also includes the warm-up phase and the evaluation). Less trainable parameters is link to faster convergence time (even if it's not the only factor). Total number of parameters would influence the inference speed (all other architecture differences being equal).
+Additionally, we report _total number of parameters_ of the model, _number of trainable parameters_, and _estimated training time_. Less trainable parameters can be linked to faster convergence time, while total number of parameters would influence the inference speed.
 
 
 
 #### Qualitative Evaluation
 
-We conduct the qualitative evaluation by generating the captions of the five first images of the coco dataset and 3 images of the NOCAPS, one in domain, one near domain and one out of domain. We conduct human evaluation using [THumB](https://arxiv.org/pdf/2111.08940.pdf), a rubric-based protocol that assesses the quality of captions along two main dimensions: precision (how accurate and relevant the caption is) and recall (how much salient information the caption covers) and is designed to promote the human evaluation transparency for qualitative evaluation. For each model, we show the generation of the first 2 coco images, on of in-domain, 1 of near-domain, 1 of out-domain. First we define the precision of the caption out of 5 counting the number of false positive (hallucinations). Then we define Recall which measure how much of the salient information from the image is covered by the caption. For instance, an otter is a small animal, and thus small animal is precise. However, it is much less informative (and less natural) than saying an otter. Finally, we add a penalty based on the [fluency](https://arxiv.org/pdf/2111.08940.pdf) of the sentence from 0 to 1 if there is weird repetitions, misspellings or grammatical errors. There is also the Conciseness and the Inclusive Language to take into account but we did not target any problems.
+We conduct the qualitative evaluation by generating the captions of the five first images of the COCO dataset and 3 images of the NOCAPS, one in domain, one near domain and one out of domain. We conduct human evaluation using [THumB](https://arxiv.org/pdf/2111.08940.pdf), a rubric-based protocol that assesses the quality of captions along two main dimensions: precision (how accurate and relevant the caption is) and recall (how much salient information the caption covers) and is designed to promote the human evaluation transparency for qualitative evaluation. First we define the _precision_ of the caption, counting the number of false positives (hallucinations), scored from 0 to 5. Then we define _recall_ which measure how much of the salient information from the image is covered by the caption, also scored from 0 to 5. For instance, an otter is a small animal, and thus small animal is precise. However, it is much less informative (and less natural) than saying an otter. Finally, we add a penalty based on the [_fluency_](https://arxiv.org/pdf/2111.08940.pdf) of the sentence from -1 to 0 if there is weird repetitions, misspellings or grammatical errors. There is also the Conciseness and the Inclusive Language to take into account but we did not target these problems.
 
 ## Results
 
-| Images                      |                                                             |             |     |                                                       |             |     |                                                              |       |     |
-|-----------------------------|-------------------------------------------------------------|-------------|-----|-------------------------------------------------------|-------------|-----|--------------------------------------------------------------|-------|-----|
-| Clipcap_mlp                 | A boy standing in front of a wooden bench.                  | P4 R4       | 4   | A man riding on a elephant with a man on top.         | P2 R2 F-0.5 | 1.5 | A coffee and a bottle of soda on a table.                    | P4 R3 | 3.5 |
-| Clipcap_mlp_ft              | A young boy standing next to a parked motorcycle.           | P3 R4       | 3.5 | A man riding on the back of an elephant.              | P2 R2       | 2   | A table topped with a cup of coffee and a box of ice cream.  | P2 R3 | 2.5 |
-| Clipcap_mlp_proj_ft         | A little boy standing on a sidewalk holding a toothbrush.   | P2 R4       | 3   | A man riding on the back of an elephant.              | P2 R2       | 2   | A table topped with a bag of drinks and a bag of snacks.     | P4 R3 | 3.5 |
-| Clipcap_trans               | A young boy is standing in a wooden bench.                  | P4 R4 F-0.5 | 3.5 | A man riding on top of an elephant with a man on top. | P2 R2 F-0.5 | 1.5 | A table with a bunch of drinks and a cup of coffee.          | P3 R3 | 3   |
-| Flan_mlp_base_proj          | A little boy is standing on a sidewalk.                     | P4 R4       | 4   | An elephant with a man on it's back.                  | P3 R2       | 2.5 | A bunch of sodas and a mug of beer.                          | P3 R3 | 3   |
-| Flan_mlp_base_proj_ft       | A young boy standing on a sidewalk holding a tennis racket. | P3 R4       | 3.5 | A man riding on the back of an elephant.              | P2 R2       | 2   | A table topped with a cup of coffee and a soda.              | P3 R3 | 3   |
-| Flan_mlp_base_proj_lora_all | A little boy is standing in the street.                     | P5 R4       | 4.5 | A man riding an elephant on a dirt road.              | P3 R2       | 2.5 | A variety of different types of drinks are on a table.       | P5 R4 | 4.5 |
-| Flan_mlp_large_proj         | A young child standing on a sidewalk with a hat.            | P3 R4       | 3.5 | A man is riding on top of an elephant.                | P2 R2       | 2   | A can of soda and a bottle of a cola.                        | P3 R3 | 3   |
-| Flan_mlp_small_proj         | A little boy in a shirt and a shirt.                        | P5 R4 F-0.5 | 4   | A large elephant with a tusk on its back.             | P3 R2       | 2.5 | A group of various types of food and drinks.                 | P5 R3 | 4   |
-| Flan_mlp_small_proj_ft      | A young boy is standing on the sidewalk.                    | P4 R4       | 4   | A man riding on the back of an elephant.              | P2 R2       | 2   | A bunch of drinks and a bottle of Coca Cola.                 | P3 R3 | 3   |
-| Flant5_base_ft              | A young boy wearing a tie and a hat.                        | P2 R4       | 3   | A man riding an elephant on a dirt road.              | P2 R2       | 2   | A table with a cup of coffee, a drink and a bottle of water. | P2 R3 | 2.5 |
+#### Quantitative evaluation
 
+In the following tables we report CIDEr and SPICE scores on the COCO dataset. Scores for the nocaps dataset are reported for the selected set of models, and can be found at the end of this section.
 
-| Images                      | *In domain* ![](images/coco_1.png)            | *Near-domain*  ![](images/nocaps_2.png)          | *Out-domain* ![](images/nocaps_3.png)              |
-|-----------------------------|---------------------------------------------------------------------------|-------------------------------------------------------------------------|----------------------------------------------------------------------------|
-| Clipcap_mlp                 | A boy standing in front of a wooden bench. <br/>[4, 4, 4, 0]                    | A man riding on a elephant with a man on top. <br/>[1.5, 2, 2, -0.5]         | A coffee and a bottle of soda on a table. <br/>[3.5, 4, 3, 0]                    |
-| Clipcap_mlp_ft              | A young boy standing next to a parked motorcycle. <br/>[3.5, 3, 4,0 ]           | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A table topped with a cup of coffee and a box of ice cream. <br/>[2.5, 2, 3, 0]  |
-| Clipcap_mlp_proj_ft         | A little boy standing on a sidewalk holding a toothbrush. <br/>[3, 2, 4, 0]     | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A table topped with a bag of drinks and a bag of snacks. <br/>[3.5, 4, 3, 0]     |
-| Clipcap_trans               | A young boy is standing in a wooden bench. <br/>[3.5, 4, 4, -0.5]              | A man riding on top of an elephant with a man on top. <br/>[1.5, 2, 2, -0.5] | A table with a bunch of drinks and a cup of coffee. <br/>[3, 3, 3, 0]            |
-| Flan_mlp_base_proj          | A little boy is standing on a sidewalk. <br/>[4, 4, 4, 0]                       | An elephant with a man on it's back. <br/>[**2.5**, 3, 2, 0]                      | A bunch of sodas and a mug of beer. <br/>[3, 3, 3, ]                            |
-| Flan_mlp_base_proj_ft       | A young boy standing on a sidewalk holding a tennis racket. <br/>[3.5, 3, 4, 0] | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A table topped with a cup of coffee and a soda. <br/>[3, 3, 3, 0]                |
-| Flan_mlp_base_proj_lora_all | A little boy is standing in the street. <br/>[**4.5**, 5, 4, 0]                     | A man riding an elephant on a dirt road. <br/>[**2.5**, 3, 2, 0]                  | A variety of different types of drinks are on a table. <br/>[**4.5**, 5, 4, 0]       |
-| Flan_mlp_large_proj         | A young child standing on a sidewalk with a hat. <br/>[3.5, 3, 4, 0]            | A man is riding on top of an elephant. <br/>[2, 2, 2, 0]                      | A can of soda and a bottle of a cola. <br/>[3, 3, 3, 0]                          |
-| Flan_mlp_small_proj         | A little boy in a shirt and a shirt. <br/>[4, 5, 4, -0.5]                      | A large elephant with a tusk on its back. <br/>[**2.5**, 3, 2, 0]                 | A group of various types of food and drinks. <br/>[4, 5, 3, 0]                   |
-| Flan_mlp_small_proj_ft      | A young boy is standing on the sidewalk. <br/>[4, 4, 4, 0]                      | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A bunch of drinks and a bottle of Coca Cola. <br/>[3, 3, 3, 0]                   |
-| Flant5_base_ft              | A young boy wearing a tie and a hat. <br/>[3, 2, 4, 0]                                     | A man riding an elephant on a dirt road. <br/>[2, 2, 2, 0]                    | A table with a cup of coffee, a drink and a bottle of water. <br/>[2.5, 2, 3, 0] |
+Certain results in the study follow a specific naming convention with the following order: *LM, size, visual representation (Pooled, Unpooled), mapper (MLP, Transformer) and finetuning (FT)*.
 
 
 ### Baseline Runs
 
-(table and/or plots)
+
+| Language Model         | LM Size | LM Finetuning | Mapper      | CIDEr ↑        | SPICE ↑        | Runtime(Hours) ↓ | Total Parameters(M) ↓ | Trainable Parameters(M) ↓ |
+| ---------------------- | ------- | ------------- | ----------- | -------------- | -------------- | ---------------- | --------------------- | ------------------------- |
+| GPT2                   | base    | Finetuned     | MLP         | **101.58**    | **14.16**    | 12.91            | **244**                   | 156                       |
+| GPT2                   | base    | Frozen        | Transformer | 91.57    | 13.45     | **10.77**            | 254                   | **42**                        |
 
 Using CIDEr and SPICE scores on COCO dataset as our primary evaluation metrics, we observed results that didn't precisely match those reported in the original ClipCap paper. It's important to note here that the disparity might be due to the different methods of caption generation employed, given that the exact procedure was not explicitly stated in the original paper, as previously mentioned.
 
 Nonetheless, a significant validation of our approach was that our training and validation loss matched those from the original ClipCap repository when using default parameters. This consistency suggests that our training procedure was robust, despite the discrepancies in caption generation outcomes.
 
-As for the training time, there was a noticeable increase in our case compared to the original paper. This increase can be attributed to our decision to include CLIP in the forward pass of our model. Unlike the original work, where visual feature extraction was a separate step, we integrated this process within the training loop, as mentioned in an earlier section.
+As for the training time, there was a noticeable increase in our case compared to the original paper. This increase can be attributed to our decision to include the CLIP model in the forward pass. Unlike the original work, where visual feature extraction was a separate step, we integrated this process within the training loop, as mentioned in an earlier section.
 
-### Different Language Models
+### Comparison of Language Models
 
-| Language Model | LM Type         | LM Size | Finetuning LM | Mapper                             | CIDEr       | SPICE       | Runtime(Hours) | Total Parameters(M) |
-| -------------- | --------------- | ------- | ------------- | ---------------------------------- | ----------- | ----------- | -------------- | ------------------- |
-| GPT2           | Decoder Only    | base    | Frozen        | Pooled embeddings with MLP         | 92.05680479 | 13.31473699 | 9.87           | 244                 |
-| GPT2 (Baseline from ClipCap Paper)         | Decoder Only    | base    | Frozen        | Pooled embeddings with Transformer | 91.57263087 | 13.4573477  | 10.77          | 254                 |
-| GPT2 (Baseline from ClipCap Paper)          | Decoder Only    | base    | Finetuned     | Pooled embeddings with MLP         | 101.5880106 | 14.15982716 | 12.91          | 244                 |
-| FLAN-T5        | Decoder Only    | base    | Frozen        | Pooled embeddings with Transformer | 93.62617392 | 18.87172958 | 10.4           | 292                 |
-| FLAN-T5        | Decoder Only    | small   | Frozen        | Pooled embeddings with Transformer | 93.19173182 | 18.20065787 | 6.44           | 165                 |
-| FLAN-T5        | Encoder Decoder | base    | Finetuned     | Pooled embeddings with MLP         | 105.520692  | 19.4933659  | 13.16          | 367                 |
-| FLAN-T5        | Encoder Decoder | small   | Finetuned     | Pooled embeddings with MLP         | 95.13775443 | 18.0817555  | 6.6            | 186                 |
+| Language Model         | LM Size | LM Finetuning | Mapper      | CIDEr ↑       | SPICE ↑       | Runtime(Hours) ↓ | Total Parameters(M) ↓ | Trainable Parameters(M) ↓ |
+| ---------------------- | ------- | ------------- | ----------- | ------------- | ------------- | ---------------- | --------------------- | ------------------------- |
+| GPT2                   | base    | Finetuned     | MLP         | 101.58        | 14.16         | 12.91            | 244                   | 156                       |
+| FLAN-T5                | base    | Finetuned     | MLP         | 105.52        | 19.49         | 13.16            | 367                   | 141                       |
+| FLAN-T5 (Decoder Only) | base    | Finetuned     | MLP         | **106.8**         | **19.96**         | 12.7             | 282                   | 194                       |
+| FLAN-T5                | small   | Finetuned     | MLP         | 95.13         | 18.08         | 6.6              | 186                   | 57                        |
+| FLAN-T5 (Decoder Only) | small   | Finetuned     | MLP         | 104.44        | 19.85         | 6.8              | 168                   | 80                        |
+| GPT2                   | base    | Frozen        | Transformer | 91.57         | 13.45         | 10.77            | 254                   | 42                        |
+| FLAN-T5 (Decoder Only) | base    | Frozen        | Transformer | 93.62         | 18.87         | 10.4             | 292                   | 42                        |
+| FLAN-T5                | base    | Frozen        | Transformer | 91.56 | 17.97 | 11.7   | 377        | 42            |
+| FLAN-T5                | small   | Frozen        | Transformer | 90.33         | 17.41         | 7.1              | 184                   | **19**                        |
+| FLAN-T5 (Decoder Only) | small   | Frozen        | Transformer | 93.19         | 18.2          | **6.44**             | **165**                   | **19**                        |
 
-### Utilisation of Unpooled Visual Representations
+![](https://s3.hedgedoc.org/demo/uploads/0c5c4875-7016-4768-8cc8-97ada9bc5ae2.png)
+
+![](https://s3.hedgedoc.org/demo/uploads/cd3370ff-bfa8-4931-832b-8d8dc3cfc131.png)
+
+When comparing the results for different sizes of the FLAN-T5 decoder with the Transformer Mapper, we observe minimal changes. Furthermore, the SPICE scores consistently favor the FLAN-T5-based models, particularly the Decoder only variants. 
+
+In terms of the CIDEr score, all FLAN-T5 variations outperform the baseline model, except for the small sized model. 
+
+Notably, FLAN-T5 Decoder Only achieves higher scores than the full FLAN-T5. Among the Decoder Only models, the base size demonstrates the best performance on both metrics.
+
+Notably, the decoder-only version of FLAN-T5 achieves higher scores than the full version. Among the FLAN-T5 decoder-only models, the base size demonstrates the best performance on both metrics. Additionally, even the small version of FLAN-T5 outperforms the best baseline model while having significantly fewer trainable parameters.
+
+We can notice that results for different sizes 
+- results for different sizes of flant5 decoder with transformer barely change (maybe confirm with captions and sum it up in discussion)
+- spice scores are always higher for flan-t5 based models, especially for decoder only versions
+- compared to the baseline, cider score is improved in all cases except small version of flan-t5
+- we can see that flan-t5 decoder only version has higher scores than full version
+- flant5 decoder only (base) achieves the best results on both metrics; small version also achieves better results than best baseline model, having half less trainable parameters
+
+### Analyzing the Utility of Unpooled Visual Representations
+
+| Language Model    | LM Size | LM Finetuning | Image Embeddings | CIDEr ↑       | SPICE ↑       | Runtime(Hours) ↓ | Total Parameters(M) ↓ | Trainable Parameters(M) ↓ |
+| ----------------- | ------- | ------------- | --------------- | -----------  | ----------- | ---------------- | --------------------- | ------------------------- |
+| GPT2              | base    | Frozen        | Pooled          | 92.06        | 13.31       | 9.9              | 244                   | 31                        |
+| GPT2              | base    | Finetuned     | Pooled          | 101.59       | 14.16       | 12.9             | 244                   | 156                       |
+| FLAN-T5           | small   | Finetuned     | Pooled          | 95.14        | 18.08       | 6.6              | 186                   | 57                        |
+| FLAN-T5           | base    | Finetuned     | Pooled          | 105.52       | 19.49       | 13.2             | 367                   | 141                       |
+| FLAN-T5 (Decoder)| small  | Finetuned | Pooled         | 104.44       | 19.85       |     6.8         | 168                   | 80                       |
+| FLAN-T5 (Decoder)| base   | Finetuned | Pooled         | 106.80      | 19.96      |       12.7      | 282                  | 194                      |
+| GPT2              | base    | Frozen        | Unpooled        | 84.52        | 12.69       | 15.8             | 218                   | 6                         |
+| GPT2              | base    | Finetuned     | Unpooled        | 105.88       | 14.69       | 19.8             | 218                   | 130                       |
+| FLAN-T5           | small   | Finetuned     | Unpooled        | 93.81        | 18.08       | 8.2              | 170                   | 40                        |
+| FLAN-T5           | base    | Finetuned     | Unpooled        | 107.65       | 19.94       | 18.9             | 341                   | 116                       |
+| FLAN-T5 (Decoder) | small   | Frozen        | Unpooled        | 91.23        | 18.03       | **6**                | **151**                   | **5**                         |
+| FLAN-T5 (Decoder) | small   | Finetuned     | Unpooled        | 103.59       | 19.64       | 7.6              | **151**                   | 63                        |
+| FLAN-T5 (Decoder) | base    | Frozen        | Unpooled        | 95.78        | 18.77       | 10.7             | 256                   | 6                         |
+| FLAN-T5 (Decoder) | base    | Finetuned     | Unpooled        | **108.81**       | **20.24**       | 14.2             | 256                   | 169                       |
+| FLAN-T5 (Decoder) | large   | Frozen        | Unpooled        | 99.31        | 19.21       | 22.8             | 570                   | 7                         |
+
+
+![](https://s3.hedgedoc.org/demo/uploads/d4f8e151-7e6d-46d3-9efe-5eec034b52a4.png)
+
+We observe a trend where the use of unpooled representations enhances the performance of models with finetuned LMs, while it has a negative impact on frozen LM architectures.
+
+Additionally, we notice that employing larger LMs can improve the performance of frozen FLAN-T5 Decoder models while maintaining a similar number of trainable parameters. **Notably, with only *7 million* trainable parameters compared to *156 million*, we achieve comparable CIDEr scores and better SPICE scores than the finetuned GPT-2 based baseline.**
 
 #### Ablation Study on Hidden Layer Size
 
-Here we perform an ablation study investigating impact of the hidden layer size of the MLP on
+Here we perform an ablation study investigating impact of the hidden layer size of the MLP on the performance.
+| Language Model    | MLP Hidden Layer Size | CIDEr ↑ | SPICE ↑ | Runtime(Hours) ↓ | Total Parameters(M) ↓ | Trainable Parameters(M) ↓ |
+| ----------------- | --------------------- | ------- | ------- | ---------------- | --------------------- | ------------------------- |
+| FLAN-T5 (Decoder) | 32                    | 74.38   | 15.17   | **5.4**              | **146**                   | **0.042**                     |
+| FLAN-T5 (Decoder) | 128                   | 86.33   | 17.14   | **5.4**              | **146**                   | 0.164                     |
+| FLAN-T5 (Decoder) | 256                   | 86.49   | 17.24   | **5.5**              | **146**                   | 0.328                     |
+| FLAN-T5 (Decoder) | 512                   | 90.82   | 17.89   | **5.4**              | 147                   | 0.656                     |
+| FLAN-T5 (Decoder) | 2048                  | 91.22   | **18.08**   | 5.6              | 149                   | 2.624                     |
+| FLAN-T5 (Decoder) | 3840                  | **91.23**   | 18.03   | 6                | 151                   | 4.92                      |
+
+![](https://s3.hedgedoc.org/demo/uploads/bd777884-4fd7-47f1-82fe-313099c4c581.png)
+
+We observe that performance exhibits a sharp increase for hidden layer sizes below 512 indicating their impact on the model's performance. However, once this threshold is surpassed, further increases in hidden layer size result in similar performance levels despite the addition of a substantial number of trainable parameters. From these findings, we can infer that a hidden layer size of 512 would be optimal for this specific use case.
 
 ### Application of LoRA
+
+We apply LoRA to the baseline architecture (MLP mapper + GPT2) and our best-performing model, . We also test it across all layers as well as a subset of layers of the LM.
+
+ Language Model    | Language Model Size | LM Finetuning           | LM Total Parameters(M)  ↓ | LM Trainable Parameters(M)  ↓ | % Reduction Trainable Parameters ↑| CIDEr   ↑   | SPICE    ↑   | Runtime(Hours)  ↓ | Total Parameters(M)  ↓ | Trainable Parameters(M)  ↓ |
+| ----------------- | ------------------- | ----------------------- | ---------------------- | -------------------------- | -------------------------------- | ----------- | ----------- | -------------- | ------------------- | ----------------------- |
+| GPT2              | base                | Full LM                 | 125                    | 125                        | 0                                | 101.59 | 14.16 | 12.9           | 243.76             | 155.91                 |
+| GPT2              | base                | LORA (All Layers)       | 125                    | 0.794                      | 99.36                            | 96.06 | 13.58 | 11.5           | 244.552             | 32.263                  |
+| GPT2              | base                | LORA (Subset of Layers) | 125                    | 0.406                      | 99.68                            | 95.98 | 13.67  | 11             | 244.163             | 31.874                  |
+| FLAN-T5 (Decoder) | base                | Full LM                 | 163                    | 163                        | 0                                | **108.81** | **20.23** | 14.2           | 256.376             | 168.526                 |
+| FLAN-T5 (Decoder) | base                | LORA (All Layers)       | 163                    | 1.127                      | 99.31                            | 102.29 | 19.43 | 12.2           | 257.503             | 7.03                    |
+| FLAN-T5 (Decoder) | base                | LORA (Subset of Layers) | 163                    | 0.295                      | 99.82                            | 101.12 | 19.199  | 10.3           | 256.671             | 6.198                   |
+| FLAN-T5 (Decoder) | small               | Full LM                 | **58.5**                   | 58.5                       | 0                                | 103.60 | 19.64  | 7.6            | **150.847**             | 62.997                  |
+| FLAN-T5 (Decoder) | small               | LORA (All Layers)       | **58.5**                   | **0.507**                      | 99.13                            | 98.69 | 18.94 | 7.4            | 151.354             | 5.427                   |
+| FLAN-T5 (Decoder) | small               | LORA (Subset of Layers) | **58.5**                   | 0.115                      | 99.8                             | 95.09 | 18.73  | **6.1**           | 150.961             | **5.034**                   |
+| FLAN-T5 (Decoder) | large               | LORA (All Layers)       | 475                    | 2.811                      | 99.41                            | 103.46 | 19.64 | 28.4           | 572.365             | 9.698                   |
+| FLAN-T5 (Decoder) | large               | LORA (Subset of Layers) | 475                    | 0.786                      | **99.83**                            | 102.40 | 19.76  | 23.7           | 570.34              | 7.673                   |
+
+
+|                           | Full LM | | | LORA (All Layers) | | | LORA (Subset of Layers) |  |  |
+| -------------------------- | - | -------| -- | ----------------- | - | - | -------------------------- |- | - |
+| | LM Trainable Parameters(M) | CIDEr   | SPICE             | LM Trainable Parameters(M) | CIDEr | SPICE | LM Trainable Parameters(M) | CIDEr | SPICE |
+| GPT2_base                  | 125     | 101.59       | 14.16                | 0.794 <span style="color:green"> **(0.64%)** </span> | 96.06 <span style="color:red"> **(-5.53)** </span> | 13.58 <span style="color:red"> **(-0.58)** </span> | 0.406  <span style="color:green"> **(0.32%)** </span> | 95.98 <span style="color:red"> **(-5.61)** </span> | 13.67 <span style="color:red"> **(-0.49)** </span> |
+| FLAN-T5 (Decoder)-base     | 163     | 108.81       | 20.24                | 1.127  <span style="color:green"> **(0.69%)** </span> | 102.29 <span style="color:red"> **(-6.52)** </span> | 19.43 <span style="color:red"> **(-0.81)** </span> | 0.295  <span style="color:green"> **(0.18%)** </span> | 101.12 <span style="color:red"> **(-7.68)** </span> | 19.2 <span style="color:red"> **(-1.04)** </span> |
+| FLAN-T5 (Decoder)-small    | 58.5    | 103.60       | 19.64                 | 0.507  <span style="color:green"> **(0.87%)** </span> | 98.69 <span style="color:red"> **(-4.91)** </span> | 18.94 <span style="color:red"> **(-0.7)** </span> | 0.115  <span style="color:green"> **(0.2%)** </span>| 95.09 <span style="color:red"> **(-8.5)** </span> | 18.73 <span style="color:red"> **(-0.9)** </span> |
 
 
 ### T5 Weights
 
-Additionally, we have performed a comparison of performance on selected FLAN-T5-based architecture with different weights - FLAN-T5 and original T5 ones.
+Additionally, we have performed a comparison of performance on selected FLAN-T5-based architecture with different weights - FLAN-T5 and original T5 ones. We have selected the best performing model on the COCO dataset, finetuned FLAN-T5 Decoder Only with unpooled representations, and its version with frozen LM.
 
-(cider score chart)
+![](https://s3.hedgedoc.org/demo/uploads/8841ff3d-685d-41a2-a009-e72ff88c7e81.png)
 
-(captions)
+
+
+It's evident that FLAN-T5 yields better results than T5 version for finetuned and frozen LM, with substantial change when LM is frozen. The analysis of the generated captions can provide explanations on these results.
+
+| Images                      | ![](images/coco_1.png) | ![](images/coco_2.png) | ![](images/coco_3.png) | ![](images/coco_4.png) | ![](images/coco_5.png) |
+|-----------------------|---------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
+| FLAN-T5 (Decoder Only), base, Unpooled, MLP, No FT   | A man on a bike with a backpack. <br/>                            | A girl is eating a piece of cake. <br/>                                                           | A man standing next to a train on the tracks. <br/>                 | A kitchen with a sink, a window and a window. <br/>                 | A group of stacked wooden spoons sitting on a table. <br/>                                |
+| T5 (Decoder Only), base, Unpooled, MLP, No FT      | A man on a bike on a bike. <br/>                                 | A girl girl eating eating a mouth mouth mouth mouth mouth mouth mouth mouth mouth mouth mouth <br/> | A person is standing on a train. <br/>                              | A kitchen with a kitchen with a kitchen and a kitchen. <br/>        | A few few few few few few few few few few few few few few few few few few few few <br/> |
+| FLAN-T5 (Decoder Only), base, Unpooled, MLP, FT | A man riding a motorcycle down a dirt road. <br/>                   | A girl is eating a piece of cake with a candle. <br/>                                                | A man standing next to a train on a track. <br/>                    | A kitchen with a stove, sink, and window. <br/>                     | A group of wooden spoons sitting on a wooden table. <br/>                               |
+| T5 (Decoder Only), base, Unpooled, MLP, FT   | A man riding a dirt bike down a dirt road. <br/>                 | A woman is eating a piece of cake. <br/>                                                        | A man standing next to a train on a track. <br/>                     | A kitchen with a sink, microwave, and window. <br/>               | A group of wooden wooden utensils sitting on a wooden table. <br/>                   |
+
+We can see that the model utilizing the frozen T5 produces repetitive and incoherent captions. In the comparison of models with finetuned LM, both models yield captions of similar quality, with the T5 version having only a single repetition for the last picture. However, models with the FLAN-T5 weights outperform its T5 counterpart in both cases.
+
+
+### Nocaps results
+| Models                                                                    | nocaps_CIDEr_entire | nocaps_SPICE_entire | nocaps_CIDEr_in-domain | nocaps_SPICE_in-domain | nocaps_CIDEr_near-domain | nocaps_SPICE_near-domain | nocaps_CIDEr_out-domain | nocaps_SPICE_out-domain |
+|-----------------------------------------------------------------------------|---------------------|---------------------|------------------------|------------------------|--------------------------|--------------------------|-------------------------|-------------------------|
+| GPT-2, base, Unpooled, MLP, FT                                              | **73.86**               | **11.78**               | **88.98**                  | **12.71**                  | **76.51**                    | **12.04**                    | **54.59**                   | **10.09**                   |
+| GPT-2, base, Pooled, Transformer, No FT                                     | 60.48               | 10.3                | 77.18                  | 11.4                   | 61.57                    | 10.38                    | 45.14                   | 9.03                    |
+| FLAN-T5 (Decoder Only), base, Unpooled, MLP, No FT, with LoRA on all layers | 62.6                | 10.66               | 77.76                  | 11.58                  | 64.24                    | 10.84                    | 46.56                   | 9.23                    |
+| GPT-2, base, Pooled, MLP, No FT                                             | 61.81               | 10.23               | 78.08                  | 11.58                  | 63.11                    | 10.35                    | 46.13                   | 8.65                    |
+| GPT-2, base, Pooled, MLP, FT                                                | 66.78               | 10.88               | 82.27                  | 12                     | 68.53                    | 11.05                    | 50.2                    | 9.33                    |
+| FLAN-T5 (Decoder Only), base, Unpooled, MLP, No FT                          | 55.91               | 10.28               | 71.79                  | 11.44                  | 58.3                     | 10.45                    | 37                      | 8.58                    |
+| FLAN-T5 (Decoder Only), base, Unpooled, MLP, FT                             | 67.36               | 11.3                | 83.32                  | 12.41                  | 69.05                    | 11.43                    | 50.63                   | 9.92                    |
+| FLAN-T5 (Decoder Only), large, Unpooled, MLP, No FT                         | 61.55               | 10.62               | 77.31                  | 11.36                  | 63.01                    | 10.85                    | 45.67                   | 9.13                    |
+| FLAN-T5 (Decoder Only), small, Unpooled, MLP, No FT                         | 50.65               | 9.76                | 68.17                  | 11                     | 53.08                    | 9.9                      | 30.39                   | 8.01                    |
+| FLAN-T5 (Decoder Only), small, Unpooled, MLP, FT                            | 60.48               | 10.66               | 79.25                  | 11.79                  | 62.85                    | 10.9                     | 39.58                   | 8.8                     |
+| FLAN-T5, base, Pooled, MLP, FT                                              | 59.81               | 10.23               | 78.22                  | 11.42                  | 61.49                    | 10.39                    | 41.35                   | 8.62                    |
+
+Surprisingly, the highest performing model on nocaps dataset is finetuned GPT-2 based architecture with unpooled representations, which outperforms all reported model in the original ClipCap paper. Again, fine-tuned models generally perform better than their non-fine-tuned equivalent. On all its different implementations the "FLAN-T5 (Decoder Only)" models consistently perform well, with scores ranging from 55.91 to 67.36 for nocaps CIDEr and from 9.76 to 11.3 for nocaps SPICE. Larger model sizes (such as "FLAN-T5 (Decoder Only), large" and "FLAN-T5 (Decoder Only), base") generally lead to better performance compared to smaller models (such as "FLAN-T5 (Decoder Only), small").
+
 
 ### Qualitative Results
 
-| Column 1 | Column 2 | Column 3 |
-| -------- | -------- | -------- |
-| Text     | Text     | Text     |
+##### COCO
+
+We assign subjectivly ... scores, and put the after the caption. With the following order:
+- Total : Total score (average between P and R, adjusted with F)
+- P : Precision
+- R : Recall
+- F : Fluency
+- [Total, P, R, F]
+
+| Images                      | ![](images/coco_1.png) | ![](images/coco_2.png) | ![](images/coco_3.png) | ![](images/coco_4.png) | ![](images/coco_5.png) |
+|-----------------------------|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------|
+| GPT-2, base, Pooled, MLP, No FT [*Clipcap MLP*]                 | A man riding a motorcycle on a dirt road.<br/> [**4**, 5, 3, 0]                          | A woman is holding a cake with a child in it. <br/>[3, 3, 3, 0]                      | A man is standing on a train with a red train. <br/>[3.5, 3, 4, 0]                   | A kitchen with a stove and a sink. <br/>[4.5, 5, 4, 0]                               | A wooden table with many wooden pieces. <br/>[4, 5, 3, 0]                            |
+| GPT-2, base, Pooled, MLP, FT              | A man riding a motorcycle down a dirt road. <br/>[**4**, 5, 3, 0]                        | A woman is eating a chocolate cake with a candle. <br/>[**4**, 4, 4, 0]                  | A man walking past a train on a train track. <br/>[**4**, 4, 4, 0]                       | A kitchen with a stove, sink, and window. <br/>[**5**, 5, 5, 0]                          | A bunch of wooden bowls and spoons on a table. <br/>[4.5, 5, 4, 0]                   |
+| GPT-2, base, Unpooled, MLP, FT         | A man riding a motorcycle down a dirt road. <br/>[4, 5, 3, 0]                        | A woman eating food from a bowl with a candle. <br/>[**4**, 5, 3, 0]                     | A man standing next to a train on a train track. <br/>[**4**, 4, 4, 0]                   | A kitchen with a sink, stove, and window. <br/>[**5**, 5, 5, 0]                          | A bunch of wooden stools lined up. <br/>[4.5, 5, 4, 0]                               |
+| GPT-2, base, Pooled, Transformer, No FT [*Clipcap Transformer*]               | A man riding a motorcycle on a dirt road. <br/>[**4**, 5, 3, 0]                          | A woman is eating a cake with a cake on it. <br/>[3, 3, 3, 0]                        | A man is walking down a train track. <br/>[**4**, 4, 4, 0]                               | A kitchen with a stove, stove top, and a sink. <br/>[4.5, 5, 5, 0]                   | A row of wooden tools sitting on a table. <br/>[4.5, 5, 4, 0]                        |
+| FLAN-T5 (Decoder Only), base, Unpooled, MLP, No FT          | A man on a bike with a backpack. <br/>[3.5, 4, 3, 0]                                 | A girl is eating a piece of cake. <br/>[3.5, 4, 3, 0]                                | A man standing next to a train on the tracks. <br/>[**4**, 4, 4, 0]                      | A kitchen with a sink, a window and a window. <br/>[4, 5, 4, 0]                      | A group of stacked wooden spoons sitting on a table. <br/>[**5**, 5, 5, 0]               |
+| FLAN-T5 (Decoder Only), base, Unpooled, MLP, FT       | A man riding a motorcycle down a dirt road. <br/>[**4**, 5, 3, 0]                        | A girl is eating a piece of cake with a candle. <br/>[**4**, 4, 4, 0]                    | A man standing next to a train on a track. <br/>[**4**, 4, 4, 0]                         | A kitchen with a stove, sink, and window. <br/>[**5**, 5, 5, 0]                          | A group of wooden spoons sitting on a wooden table. <br/>[4.5, 5, 4, 0]              |
+| FLAN-T5 (Decoder Only), base, Unpooled, MLP, No FT, with LoRA on all layers | A man is riding a bicycle on a dirt path. <br/>[3.5, 4, 3, 0]                        | A woman is eating a cake with a fork. <br/>[3.5, 4, 3, 0]                            | A man standing next to a train on a track. <br/>[**4**, 4, 4, 0]                         | A kitchen with a stove, sink, and window. <br/>[**5**, 5, 5, 0]                          | A group of wooden utensils are lined up. <br/>[4.5, 5, 4, 0]                         |
+| FLAN-T5 (Decoder Only), large, Unpooled, MLP, No FT         | A man riding a motorcycle on a dirt road. <br/>[**4**, 5, 3, 0]                          | A woman eating a cake with a candle in it. <br/>[**4**, 4, 4, 0]                         | A man standing next to a train on a train track. <br/>[**4**, 4, 4, 0]                   | A kitchen with a stove and a sink. <br/>[4.5, 5, 4, 0]                               | A bunch of wooden spoons are stacked on top of each other. <br/>[3.5, 3, 4, 0]       |
+| FLAN-T5 (Decoder Only), small, Unpooled, MLP, No FT         | A man riding a motorcycle on a dirt road. <br/>[**4**, 5, 3, 0]                          | A girl is eating a cake with a bowl of food. <br/>[3, 3, 3, 0]                       | A man is standing next to a train on a train. <br/>[3, 3, 4, 0]                      | A kitchen with a sink, sink, and a window. <br/>[4, 5, 4, 0]                         | A bunch of different types of skateboards are sitting on a table. <br/>[3, 2, 4, 0]  |
+| FLAN-T5 (Decoder Only), small, Unpooled, MLP, FT      | A man riding a motorcycle on a dirt road. <br/>[**4**, 5, 3, 0]                          | A woman is eating a cake with a knife. <br/>[2.5, 2, 3, 0]                           | A man standing next to a train on a track. <br/>[**4**, 4, 4, 0]                         | A kitchen with a sink, stove, and a window. <br/>[**5**, 5, 5, 0]                        | A group of wooden stools with a variety of knives. <br/>[3.5, 3, 4, 0]               |
+| FLAN-T5, base, Pooled, MLP, FT              | A man riding a motorcycle down a dirt road. <br/>[**4**, 5, 3, 0]                        | A woman is cutting a cake with a fork. <br/>[2.5, 2, 3, 0]                           | A train is stopped at a train station. <br/>[3, 3, 3, 0]                             | A kitchen with a stove, oven, and sink. <br/>[**5**, 5, 5, 0]                            | A bunch of wooden spoons are sitting on a table. <br/>[4.5, 5, 4, 0]                 |
+
+The FLAN-T5 (Decoder Only) model variations, utilizing unpooled representations and an MLP mapper consistently achieve the highest scores on the COCO dataset, exhibiting slightly more precise captions. These models, along with the rest of the models, yield excellent results on the COCO dataset. The observed performance aligns well with the CIDEr and SPICE scores.
 
 
-## Discussion
+##### Nocaps
 
 
+| Images                      | *In domain* ![](images/nocaps_1.jpg)             | *Near-domain*  ![](images/nocaps_2.jpg)          | *Out-domain* ![](images/nocaps_3.jpg)              |
+|-----------------------------|---------------------------------------------------------------------------|-------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| GPT-2, base, Pooled, MLP, No FT  [*Clipcap MLP*]                 | A boy standing in front of a wooden bench. <br/>[4, 4, 4, 0]                    | A man riding on a elephant with a man on top. <br/>[1.5, 2, 2, -0.5]         | A coffee and a bottle of soda on a table. <br/>[3.5, 4, 3, 0]                    |
+| GPT-2, base, Pooled, MLP, FT              | A young boy standing next to a parked motorcycle. <br/>[3.5, 3, 4,0 ]           | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A table topped with a cup of coffee and a box of ice cream. <br/>[2.5, 2, 3, 0]  |
+| GPT-2, base, Unpooled, MLP, FT         | A little boy standing on a sidewalk holding a toothbrush. <br/>[3, 2, 4, 0]     | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A table topped with a bag of drinks and a bag of snacks. <br/>[3.5, 4, 3, 0]     |
+| GPT-2, base, Pooled, Transformer, No FT [*Clipcap Transformer*]               | A young boy is standing in a wooden bench. <br/>[3.5, 4, 4, -0.5]              | A man riding on top of an elephant with a man on top. <br/>[1.5, 2, 2, -0.5] | A table with a bunch of drinks and a cup of coffee. <br/>[3, 3, 3, 0]            |
+| FLAN-T5 (Decoder Only), base, Unpooled, MLP, No FT          | A little boy is standing on a sidewalk. <br/>[4, 4, 4, 0]                       | An elephant with a man on it's back. <br/>[**2.5**, 3, 2, 0]                      | A bunch of sodas and a mug of beer. <br/>[3, 3, 3, ]                            |
+| FLAN-T5 (Decoder Only), base, Unpooled, MLP, FT       | A young boy standing on a sidewalk holding a tennis racket. <br/>[3.5, 3, 4, 0] | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A table topped with a cup of coffee and a soda. <br/>[3, 3, 3, 0]                |
+| FLAN-T5 (Decoder Only), base, Unpooled, MLP, No FT, with LoRA on all layers | A little boy is standing in the street. <br/>[**4.5**, 5, 4, 0]                     | A man riding an elephant on a dirt road. <br/>[**2.5**, 3, 2, 0]                  | A variety of different types of drinks are on a table. <br/>[**4.5**, 5, 4, 0]       |
+| FLAN-T5 (Decoder Only), large, Unpooled, MLP, No FT         | A young child standing on a sidewalk with a hat. <br/>[3.5, 3, 4, 0]            | A man is riding on top of an elephant. <br/>[2, 2, 2, 0]                      | A can of soda and a bottle of a cola. <br/>[3, 3, 3, 0]                          |
+| FLAN-T5 (Decoder Only), small, Unpooled, MLP, No FT         | A little boy in a shirt and a shirt. <br/>[4, 5, 4, -0.5]                      | A large elephant with a tusk on its back. <br/>[**2.5**, 3, 2, 0]                 | A group of various types of food and drinks. <br/>[4, 5, 3, 0]                   |
+| FLAN-T5 (Decoder Only), small, Unpooled, MLP, FT      | A young boy is standing on the sidewalk. <br/>[4, 4, 4, 0]                      | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A bunch of drinks and a bottle of Coca Cola. <br/>[3, 3, 3, 0]                   |
+| FLAN-T5, base, Pooled, MLP, FT              | A young boy wearing a tie and a hat. <br/>[3, 2, 4, 0]                                     | A man riding an elephant on a dirt road. <br/>[2, 2, 2, 0]                    | A table with a cup of coffee, a drink and a bottle of water. <br/>[2.5, 2, 3, 0] |
+
+The FLAN-T5 decoder model (base), utilizing unpooled representations, an MLP mapper and applying LoRA across all layers, consistently performed best across the provided domains. Its captions exhibited higher consistency, richness, and level of detail. Moreover, it achieved the highest scores for "in-domain", "near-domain" and "out-of-domain" images, indicating its strong generalization capabilities beyond the specific training domain while still being very good at trained tasks. This model's ability to generate accurate descriptions across various domains (not limited to "in-domain" images) highlights its versatility and adaptability.
+
+
+On the other hand, the finetuned FLAN-T5 (base), which utilized pooled representations from an MLP mapper, along with the original Clipcap transformer approach, exhibited the poorest captions. For instance, these models generated descriptions like "A table with a cup of coffee, a drink, and a bottle of water" even when there were no actual cup of coffee or bottle of water present in the image. Furthermore, they produced repetitive captions such as "A man riding on top of an elephant with a man on top."
+
+
+
+## Discussion and Conclusion
+
+- there's a general pattern that replacing lm to flant5 gives better results on coco, to flant5 decoder![](https://s3.hedgedoc.org/demo/uploads/267113b2-10f2-46fa-a43d-9327dd737eca.png)
+ even better
+- using unpooled representations projected with mlp, generally improves results when finetuning lm, and worses otherwise
+"This may be due to the fact that for unpooled representations, each token is processed individually, which primarily provides local information about the image. Consequently, the language model needs to adapt to effectively utilize this information, whereas the baseline method can generate suitable captions relying on the prefix alone."
+- we need an MLP with hidden layer size of only 512 neurons, to propely project clip unpooled representations into FLAN-T5 decoder representation space; it can give us satisfactory results with only 7 million trainable parameter
+- we can see from t5 flant5 comparison, that when lm is frozen, the performence dramatically drops for the T5 version; it confirms that FLAN as a finetuning method, greatly improves model robustness
+
+(when putting some general claims, maybe highlight the fact that all these results were observed for out setup, that ie. includes greedy search for generation)
+
+In our evaluation, the FLAN-T5 models consistently achieve higher scores on the COCO dataset, indicating their strong performance in generating captions for a wide range of images. However, it is noteworthy that the GPT2-based model with unpooled CLIP representations and fine-tuning emerges as the best-performing model on the Nocaps dataset.
+
+The distinguishing factor between these models lies primarily in the LM, while the other parameters remain consistent. One possible explanation for this observation is that, despite FLAN-T5 being trained on a diverse set of tasks, it may not possess the same level of robustness as GPT2, which benefits from being trained on a vast and diverse range of data. This suggests that the diversity of data that the LM has been exposed to may play a crucial role in the it's ability to generalize and produce accurate captions across different datasets.
+
+(Answer hypothesis of approachs: Replacing LM with different appraoches, comment on full flan-t5, decoder only. Pick up the patterns. Talk about the unpooled representations. Comment on LoRA results)
 
 ## Further Work
 
@@ -364,21 +500,34 @@ In addition, we see value in examining the integration of global information alo
 
 ## Individual Contribution
 
+Dawid Kopiczko:
+- design of architectures and approaches used
+- implementation of training pipeline
+- implementation of baseline architectures
+- implementation of unpooled clip representations approach
+- adaptation of initial generation algorithm into pipeline
+- preparing slurm environment
+- determining and running experiments
+- adapting nocaps dataset generation into pipeline and optimization
+- implementation of script preparing coco dataset
+- evaluation on coco + utilities like storing captions for evalai benchmark
+- writing blogpost
 
+Tom Pelletreau-Duris:
 
-## References
+- Comparative analysis of datasets
+- Comparative analysis of metrics
+- Implementation of nocaps dataset into pipeline and optimization
+- Reformating annoations json files
+- Second pipeline with LIZA cluster (unfinished)
+- Standardisation of the qualitative evaluation
+- Comparative analysis of quantiative and qualitative evaluations
+- Results
+- Discussions
 
-: X
-: Agrawal, H., Desai, K., Wang, Y., Chen, X., Jain, R., Johnson, M., Batra, D., Parikh, D., Lee, S., & Anderson, P. (2019). nocaps : Novel object captioning at scale. 2019 IEEE/CVF International Conference on Computer Vision (ICCV), 8947‑8956. https://doi.org/10.1109/ICCV.2019.00904
-: Anderson, P., Fernando, B., Johnson, M., & Gould, S. (2016). SPICE : Semantic Propositional Image Caption Evaluation (arXiv:1607.08822). arXiv. http://arxiv.org/abs/1607.08822
-: Anderson, P., Gould, S., & Johnson, M. (2018). Partially-Supervised Image Captioning (arXiv:1806.06004). arXiv. http://arxiv.org/abs/1806.06004
-Cui, Y., Yang, G., Veit, A., Huang, X., & Belongie, S. (2018). Learning to Evaluate Image Captioning (arXiv:1806.06422; Version 1). arXiv. http://arxiv.org/abs/1806.06422
-: Hendricks, L. A., Venugopalan, S., Rohrbach, M., Mooney, R., Saenko, K., & Darrell, T. (2016). Deep Compositional Captioning : Describing Novel Object Categories without Paired Training Data (arXiv:1511.05284). arXiv. http://arxiv.org/abs/1511.05284
-: Kasai, J., Sakaguchi, K., Dunagan, L., Morrison, J., Bras, R. L., Choi, Y., & Smith, N. A. (2022). Transparent Human Evaluation for Image Captioning (arXiv:2111.08940). arXiv. http://arxiv.org/abs/2111.08940
-: Li, X., Yin, X., Li, C., Zhang, P., Hu, X., Zhang, L., Wang, L., Hu, H., Dong, L., Wei, F., Choi, Y., & Gao, J. (2020). Oscar : Object-Semantics Aligned Pre-training for Vision-Language Tasks (arXiv:2004.06165; Version 2). arXiv. http://arxiv.org/abs/2004.06165
-: Liu, S., Zhu, Z., Ye, N., Guadarrama, S., & Murphy, K. (2017). Improved Image Captioning via Policy Gradient optimization of SPIDEr. 2017 IEEE International Conference on Computer Vision (ICCV), 873‑881. https://doi.org/10.1109/ICCV.2017.100
-: Lu, J., Yang, J., Batra, D., & Parikh, D. (2018). Neural Baby Talk (arXiv:1803.09845). arXiv. http://arxiv.org/abs/1803.09845
-: Mokady, R., Hertz, A., & Bermano, A. H. (2021). ClipCap : CLIP Prefix for Image Captioning (arXiv:2111.09734). arXiv. http://arxiv.org/abs/2111.09734
-: Vedantam, R., Zitnick, C. L., & Parikh, D. (2015). CIDEr : Consensus-based Image Description Evaluation (arXiv:1411.5726). arXiv. http://arxiv.org/abs/1411.5726
-: Wang, X., Wang, H., & Yang, D. (2022a). Measure and Improve Robustness in NLP Models : A Survey. Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, 4569‑4586. https://doi.org/10.18653/v1/2022.naacl-main.339
-: Wang, X., Wang, H., & Yang, D. (2022b). Measure and Improve Robustness in NLP Models : A Survey. Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, 4569‑4586. https://doi.org/10.18653/v1/2022.naacl-main.339
+Abishek:
+
+Priyakshi:
+
+Dheeraj:
+
