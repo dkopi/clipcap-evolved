@@ -188,7 +188,7 @@ class CaptioningModel(nn.Module):
         if architecture == "mlp" or architecture == "clipcap":
             self.lm = GPT2LMHeadModel.from_pretrained(gpt2_pretrained_model)
             self.lm_embedding_size = self.lm.transformer.wte.weight.shape[1]
-        elif architecture == "flan-t5":
+        elif architecture == "flan-t5" or architecture == "flan-t5-trans":
             self.lm = T5ForConditionalGeneration.from_pretrained(flan_pretrained_model)
             self.lm_embedding_size = self.lm.get_input_embeddings().weight.shape[1]
         elif architecture == "flan-mlp" or architecture == "flan-transformer":
@@ -207,7 +207,11 @@ class CaptioningModel(nn.Module):
             lm_input_size = self.lm_embedding_size * prefix_length
 
         if not self.direct:
-            if architecture == "flan-transformer" or architecture == "clipcap":
+            if (
+                architecture == "flan-transformer"
+                or architecture == "clipcap"
+                or architecture == "flan-t5-trans"
+            ):
                 self.mapper = ClipCapTransformerMapper(
                     self.visual_output_size,
                     self.lm_embedding_size,
@@ -227,6 +231,7 @@ class CaptioningModel(nn.Module):
     def token_to_embed(self, tokens: torch.Tensor):
         if (
             self.architecture == "flan-t5"
+            or self.architecture == "flan-t5-trans"
             or self.architecture == "flan-mlp"
             or self.architecture == "flan-transformer"
         ):
@@ -237,7 +242,7 @@ class CaptioningModel(nn.Module):
     def get_logits(
         self, image_embeds: torch.Tensor, encoder_outputs: Optional[torch.tensor] = None
     ):
-        if self.architecture == "flan-t5":
+        if self.architecture == "flan-t5" or self.architecture == "flan-t5-trans":
             return self.lm(
                 inputs_embeds=image_embeds, decoder_inputs_embeds=encoder_outputs
             ).logits
@@ -271,7 +276,7 @@ class CaptioningModel(nn.Module):
     ):
         image_embeds = self.get_image_embeds(images)
 
-        if self.architecture == "flan-t5":
+        if self.architecture == "flan-t5" or self.architecture == "flan-t5-trans":
             out = self.lm(inputs_embeds=image_embeds, labels=tokens)
         elif self.architecture == "clipcap" or self.architecture == "mlp":
             embedding_text = self.lm.transformer.wte(tokens)
@@ -368,7 +373,10 @@ class TrainingModule(pl.LightningModule):
         if not self.hparams.finetune_lm:
             self.freeze_target(self.model.lm, skip_grad)
             if self.hparams.lora and not skip_grad:
-                if self.hparams.arch == "flan-t5":
+                if (
+                    self.hparams.arch == "flan-t5"
+                    or self.hparams.arch == "flan-t5-trans"
+                ):
                     self.freeze_target(self.model.lm)
                 self.model.lm = self.get_lora_model(
                     self.model.lm,
@@ -377,7 +385,7 @@ class TrainingModule(pl.LightningModule):
                     self.hparams.lora_rank,
                     self.hparams.lora_alpha,
                 )
-        elif self.hparams.arch == "flan-t5":
+        elif self.hparams.arch == "flan-t5" or self.hparams.arch == "flan-t5-trans":
             self.freeze_target(self.model.lm.decoder, skip_grad)
 
     def freeze_target(self, target, skip_grad=False):
@@ -391,7 +399,12 @@ class TrainingModule(pl.LightningModule):
         self, model, arch, lora_target_modules, lora_rank, lora_alpha, lora_config=None
     ):
         if not lora_config:
-            if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
+            if (
+                arch == "flan-t5"
+                or arch == "flan-t5-trans"
+                or arch == "flan-mlp"
+                or arch == "flan-transformer"
+            ):
                 if "all" in lora_target_modules:
                     target_modules = [
                         "q",
@@ -475,6 +488,7 @@ class TrainingModule(pl.LightningModule):
 
         if (
             self.hparams.arch == "flan-t5"
+            or self.hparams.arch == "flan-t5-trans"
             or self.hparams.arch == "flan-mlp"
             or self.hparams.arch == "flan-transformer"
         ):
@@ -563,6 +577,7 @@ def train_model(
         tokenizer = GPT2Tokenizer.from_pretrained("gpt2" + kwargs["gpt_size"])
     elif (
         kwargs["arch"] == "flan-t5"
+        or kwargs["arch"] == "flan-t5-trans"
         or kwargs["arch"] == "flan-mlp"
         or kwargs["arch"] == "flan-transformer"
     ):
@@ -777,7 +792,14 @@ def main():
     parser.add_argument(
         "--arch",
         default="mlp",
-        choices=["mlp", "clipcap", "flan-t5", "flan-mlp", "flan-transformer"],
+        choices=[
+            "mlp",
+            "clipcap",
+            "flan-t5",
+            "flan-t5-trans",
+            "flan-mlp",
+            "flan-transformer",
+        ],
     )
     parser.add_argument(
         "--flan_size", default="base", choices=["small", "base", "large", "xl", "xxl"]

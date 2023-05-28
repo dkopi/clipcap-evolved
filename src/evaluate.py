@@ -75,7 +75,12 @@ def generate(
     model.eval()
     batch_size = embed.size(0)
     generated = embed  # TODO: Conditional image "embed"s to encoder input, decoder to special token according to docs
-    if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
+    if (
+        arch == "flan-t5"
+        or arch == "flan-t5-trans"
+        or arch == "flan-mlp"
+        or arch == "flan-transformer"
+    ):
         encoder_input = embed
         generated = model.token_to_embed(
             torch.zeros((batch_size, 1), dtype=torch.long).to(embed.device)
@@ -89,7 +94,12 @@ def generate(
 
     with torch.no_grad():
         for i in range(entry_length):
-            if arch == "flan-t5" or arch == "flan-mlp" or arch == "flan-transformer":
+            if (
+                arch == "flan-t5"
+                or arch == "flan-t5-trans"
+                or arch == "flan-mlp"
+                or arch == "flan-transformer"
+            ):
                 logits = model.get_logits(encoder_input, generated)
             else:
                 logits = model.get_logits(generated)
