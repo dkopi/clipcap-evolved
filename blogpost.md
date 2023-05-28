@@ -289,6 +289,22 @@ We conduct the qualitative evaluation by generating the captions of the five fir
 | Flan_mlp_small_proj_ft      | A young boy is standing on the sidewalk.                    | P4 R4       | 4   | A man riding on the back of an elephant.              | P2 R2       | 2   | A bunch of drinks and a bottle of Coca Cola.                 | P3 R3 | 3   |
 | Flant5_base_ft              | A young boy wearing a tie and a hat.                        | P2 R4       | 3   | A man riding an elephant on a dirt road.              | P2 R2       | 2   | A table with a cup of coffee, a drink and a bottle of water. | P2 R3 | 2.5 |
 
+
+| Images                      | *In domain* ![](images/coco_1.png)            | *Near-domain*  ![](images/nocaps_2.png)          | *Out-domain* ![](images/nocaps_3.png)              |
+|-----------------------------|---------------------------------------------------------------------------|-------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| Clipcap_mlp                 | A boy standing in front of a wooden bench. <br/>[4, 4, 4, 0]                    | A man riding on a elephant with a man on top. <br/>[1.5, 2, 2, -0.5]         | A coffee and a bottle of soda on a table. <br/>[3.5, 4, 3, 0]                    |
+| Clipcap_mlp_ft              | A young boy standing next to a parked motorcycle. <br/>[3.5, 3, 4,0 ]           | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A table topped with a cup of coffee and a box of ice cream. <br/>[2.5, 2, 3, 0]  |
+| Clipcap_mlp_proj_ft         | A little boy standing on a sidewalk holding a toothbrush. <br/>[3, 2, 4, 0]     | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A table topped with a bag of drinks and a bag of snacks. <br/>[3.5, 4, 3, 0]     |
+| Clipcap_trans               | A young boy is standing in a wooden bench. <br/>[3.5, 4, 4, -0.5]              | A man riding on top of an elephant with a man on top. <br/>[1.5, 2, 2, -0.5] | A table with a bunch of drinks and a cup of coffee. <br/>[3, 3, 3, 0]            |
+| Flan_mlp_base_proj          | A little boy is standing on a sidewalk. <br/>[4, 4, 4, 0]                       | An elephant with a man on it's back. <br/>[**2.5**, 3, 2, 0]                      | A bunch of sodas and a mug of beer. <br/>[3, 3, 3, ]                            |
+| Flan_mlp_base_proj_ft       | A young boy standing on a sidewalk holding a tennis racket. <br/>[3.5, 3, 4, 0] | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A table topped with a cup of coffee and a soda. <br/>[3, 3, 3, 0]                |
+| Flan_mlp_base_proj_lora_all | A little boy is standing in the street. <br/>[**4.5**, 5, 4, 0]                     | A man riding an elephant on a dirt road. <br/>[**2.5**, 3, 2, 0]                  | A variety of different types of drinks are on a table. <br/>[**4.5**, 5, 4, 0]       |
+| Flan_mlp_large_proj         | A young child standing on a sidewalk with a hat. <br/>[3.5, 3, 4, 0]            | A man is riding on top of an elephant. <br/>[2, 2, 2, 0]                      | A can of soda and a bottle of a cola. <br/>[3, 3, 3, 0]                          |
+| Flan_mlp_small_proj         | A little boy in a shirt and a shirt. <br/>[4, 5, 4, -0.5]                      | A large elephant with a tusk on its back. <br/>[**2.5**, 3, 2, 0]                 | A group of various types of food and drinks. <br/>[4, 5, 3, 0]                   |
+| Flan_mlp_small_proj_ft      | A young boy is standing on the sidewalk. <br/>[4, 4, 4, 0]                      | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A bunch of drinks and a bottle of Coca Cola. <br/>[3, 3, 3, 0]                   |
+| Flant5_base_ft              | A young boy wearing a tie and a hat. <br/>[3, 2, 4, 0]                                     | A man riding an elephant on a dirt road. <br/>[2, 2, 2, 0]                    | A table with a cup of coffee, a drink and a bottle of water. <br/>[2.5, 2, 3, 0] |
+
+
 ### Baseline Runs
 
 (table and/or plots)
