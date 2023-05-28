@@ -1,7 +1,7 @@
 
 # ClipCap Evolved - Bridging the Gap Between Modalities
 
-*28 Mar 2023* | *Authors: Dawid Kopiczko, Abishek, Dheeraj, Priyakshi Goswami, Tom Pelletreau-Duris*
+*28 Mar 2023* | *Authors: Dawid Kopiczko, Abishek, Dheeraj Varghese, Priyakshi Goswami, Tom Pelletreau-Duris*
 
 
 Image captioning is a challenging vision-language task that involves automatically generating relevant and valid captions that describes the content of an image. 
@@ -24,7 +24,7 @@ The authours of ClipCap propose a simple yet effective technique to generate cap
 
 Their second approach demonstrate that training the mapping network alone can yield competent captioning results while keeping CLIP and the LM frozen.
 
-![](https://s3.hedgedoc.org/demo/uploads/3ee17fc6-f181-499e-adbc-31c4438f258e.png)
+![Clipcap](images/Clipcap.jpg)
 
 
 At the time of their publication, this method achieved comparable performance to State-Of-The-Art approaches on challenging datasets such as Conceptual Captions and nocaps, while being simpler, faster, and lighter. However, it is worth noting a couple of potential weaknesses. Firstly, they failed to explore the utility of unpooled visual representations, which may affect its ability to capture fine-grained visual details; and the limited evaluation with different language models, which may leave room for further exploration and analysis. This is exactly what inspired us to explore and pursue this research direction.
@@ -42,7 +42,7 @@ Contrastive Language Pre-Training (CLIP) is an efficient method of learning  fro
 #### Architecture
 CLIP architecture consists of two main components, a text encoder, and an image encoder. These two encoders are jointly trained using a contrastive learning approach to predict the correct pairings of a batch of training (image, text) examples. The CLIP model encodes textual and visual information into a multimodal embedding space, with an aim to increase the cosine similarity score of images and text representations. 
 
-<img src="https://s3.hedgedoc.org/demo/uploads/0ce99e57-bf68-4568-ba2c-f31f558513f8.jpeg" alt= “” width="70%" height="40%">
+![architecture_1](images/architecture_1.jpg)
 
 
 The original clip implementation uses a transformer as its text encoder. For the image encoder, the authors propose two separate architectures, one with a [ResNet](https://arxiv.org/abs/1512.03385), and the other with a [Vision Transformer (ViT)](https://arxiv.org/abs/2010.11929).
@@ -50,7 +50,7 @@ The original clip implementation uses a transformer as its text encoder. For the
 ###### Vision Transformer
 The Vision Transformer (ViT) model architecture was introduced in the paper titled “An Image is Worth 16*16 Words: Transformers for Image Recognition at Scale”, where the authors utilise the transformer architecture for image processing tasks. The proposed architecture involves processing images by splitting an image into fixed size patches, linearly embedding them along with positional embeddings, and then inputting the resultant sequence of vectors to a standard transformer architecture.
 
-<img src="https://s3.hedgedoc.org/demo/uploads/231dff94-f16f-40cf-8d91-4f393bddb3af.jpeg" alt= “” width="70%" height="40%">
+![architecture_2](images/architecture_2.jpg)
 
 
 The results of the experiments demonstrate that the ViT encoder architecture performs better than the ResNet based encoder architecture on a wide range of datasets. Additionally, the baseline ClipCap implementation uses the CLIP-ViT as its image encoder.
@@ -98,7 +98,7 @@ A common practice in the field of NLP is the usage of pretrained models and adap
 
 Low Rank Adaptation (LoRA) is a technique introduced by Hu et al. in their paper as efficient fine tuning technique that can greatly reduce the number of trainable parameters for downstream tasks, by freezing the pre-trained model weights and injecting trainable rank decomposition matrices into each layer of the Transformer architecture. In particular, LoRA use tensor-train decomposition of the weight matrix and decompose it into two "update matrices".
 
-<img src="https://miro.medium.com/v2/resize:fit:730/1*D_i25E9dTd_5HMa45zITSg.png" alt= “” width="50%" height="50%">
+![lora](images/lora.png)
 
 For any model layer that can be expressed as a matrix multiplication of the form $h=W_0x$, it can be reparametrised as follows 
 
@@ -122,10 +122,12 @@ In this study, we explore different approaches to improve the generation of accu
 We begin by replicating the ClipCap architectures to establish baseline performance. Our focus lies on replicating two variants of the architecture, while employing the CLIP-VIT/32 model as the visual encoder. These serve as reference points to evaluate and compare the effectiveness of our approaches. 
  
 ##### ClipCap, The MLP Approach
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;   ![](https://)![](https://s3.hedgedoc.org/demo/uploads/1c551205-eed4-4b2d-936a-6bc151b994e1.png)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+![baseline_1](images/baseline_1.png)
 
 ##### ClipCap, The Transformer Approach
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;   ![](https://)![](https://s3.hedgedoc.org/demo/uploads/b456699a-d55a-4fae-87b6-be14c642851a.png)
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+![baseline_2](images/baseline_2.png)
 
 
 ### Language Model Architecture Matters
@@ -135,7 +137,8 @@ ClipCap utilized GPT2, a decoder-only transformer, to generate tokens autoregres
 Based on this observation, we explore the use of encoder-decoder models as a promising direction. This resulted in our incorporation of the Flan-T5 model into the ClipCap architecture. The decision to integrate Flan-T5 into ClipCap was motivated by its versatility in handling a multitude of tasks, each one encoded by the encoder. This presents a unique opportunity for improving the caption prediction process. By feeding a prefixed sentence to the encoder block, we are priming the decoder, theoretically enabling it to predict captions more effectively. This is predicated on the hypothesis that the encoder's capacity to embed different tasks will substantially enhance the decoder's proficiency in generating precise and pertinent captions.
 
 #### Using FLAN-T5 as the LM
-![CLIP-VIT/32 + MLP + FLAN-T5](https://s3.hedgedoc.org/demo/uploads/eb688bed-ae5f-47e0-9a9e-96d8d4e9d36d.png)
+![CLIP-VIT/32 + MLP + FLAN-T5](images/Flant5_1.png)
+
 
 Here, we chose to examine only the approach using an MLP mapper, given that the transformer from ClipCap inherently serves as an encoder. Introducing a transformer mapper into an already existing encoder-decoder architecture would be redundant and potentially unnecessary.
 
@@ -144,10 +147,10 @@ Here, we chose to examine only the approach using an MLP mapper, given that the 
 Another approach in our exploration involves utilising only the decoder component of the FLAN-T5 model. In this variant, we decided to bypass the encoder and feed the inputs from the previous components directly to the pre-trained cross attention layers of the decoder. We tested this variant with the two mappers: MLP and Transformer.
 
 ##### FLAN-T5 Decoder, The MLP Approach
-![CLIP-VIT/32 + MLP + FLAN-T5 Decoder Only](https://s3.hedgedoc.org/demo/uploads/763e7342-f649-4dae-a6aa-8a7b42aa77bc.png)
+![CLIP-VIT/32 + MLP + FLAN-T5 Decoder Only](images/Flant5_2.png)
 
 ##### FLAN-T5 Decoder, The Transformer Approach
-![CLIP-VIT/32 + Transformer + FLAN-T5 Decoder Only](https://s3.hedgedoc.org/demo/uploads/93919a7e-4d0b-4d03-ae75-dc606392ed1c.png)
+![CLIP-VIT/32 + Transformer + FLAN-T5 Decoder Only](images/Flant5_3.png)
 
 
 ### Beyond Pooled Features: Exploiting Visual Representations
@@ -156,7 +159,7 @@ In order to enhance the utilization of visual representations in our models, we 
 
 To effectively incorporate these unpooled visual tokens into our models, we take steps to align the representation spaces of the visual and language models. This involves passing the visual tokens through a Multilayer Perceptron with shared weights for all tokens. Subsequently, these refined tokens are fed into the language model. For GPT2 and Flan-T5, they act as the prefix, while for the Flan-T5 decoder, they serve as the entire conditioning signal. We anticipate that this tweak will result in improved performance.
 
-![CLIP-Projections](https://s3.hedgedoc.org/demo/uploads/73177a2b-9659-41d3-9fea-483551cba252.png)
+![CLIP-Projections](images/unpooled.png)
 
 The shared MLP projects the visual tokens that are not pooled. This means we utilise all the tokens that CLIP-ViT outputs. These tokens, after projection, are directly mapped to the LM.
 
@@ -295,24 +298,20 @@ As for the training time, there was a noticeable increase in our case compared t
 | FLAN-T5                | small   | Frozen        | Transformer | 90.33         | 17.41         | 7.1              | 184                   | **19**                        |
 | FLAN-T5 (Decoder Only) | small   | Frozen        | Transformer | 93.19         | 18.2          | **6.44**             | **165**                   | **19**                        |
 
-![](https://s3.hedgedoc.org/demo/uploads/0c5c4875-7016-4768-8cc8-97ada9bc5ae2.png)
+![MLP_transformer_1](images/MLP_transformer_1.png)
 
-![](https://s3.hedgedoc.org/demo/uploads/cd3370ff-bfa8-4931-832b-8d8dc3cfc131.png)
+![MLP_transformer_2](images/MLP_transformer_2.png)
 
 When comparing the results for different sizes of the FLAN-T5 decoder with the Transformer Mapper, we observe minimal changes. Furthermore, the SPICE scores consistently favor the FLAN-T5-based models, particularly the Decoder only variants. 
 
-In terms of the CIDEr score, all FLAN-T5 variations outperform the baseline model, except for the small sized model. 
+In terms of the CIDEr score, all FLAN-T5 variations outperform the baseline model, except for the small sized model. Notably, FLAN-T5 Decoder only models achieve higher scores than the full FLAN-T5 counterpart. Among the Decoder only models, the base size demonstrates the best performance on both metrics. Additionally, even the small version of the finetuned FLAN-T5 surpasses the performance of the best baseline model, while reducing the trainable parameters by almost half.
 
-Notably, FLAN-T5 Decoder Only achieves higher scores than the full FLAN-T5. Among the Decoder Only models, the base size demonstrates the best performance on both metrics.
-
-Notably, the decoder-only version of FLAN-T5 achieves higher scores than the full version. Among the FLAN-T5 decoder-only models, the base size demonstrates the best performance on both metrics. Additionally, even the small version of FLAN-T5 outperforms the best baseline model while having significantly fewer trainable parameters.
-
-We can notice that results for different sizes 
+<!-- We can notice that results for different sizes 
 - results for different sizes of flant5 decoder with transformer barely change (maybe confirm with captions and sum it up in discussion)
 - spice scores are always higher for flan-t5 based models, especially for decoder only versions
 - compared to the baseline, cider score is improved in all cases except small version of flan-t5
 - we can see that flan-t5 decoder only version has higher scores than full version
-- flant5 decoder only (base) achieves the best results on both metrics; small version also achieves better results than best baseline model, having half less trainable parameters
+- flant5 decoder only (base) achieves the best results on both metrics; small version also achieves better results than best baseline model, having half less trainable parameters -->
 
 ### Analyzing the Utility of Unpooled Visual Representations
 
@@ -335,7 +334,7 @@ We can notice that results for different sizes
 | FLAN-T5 (Decoder) | large   | Frozen        | Unpooled        | 99.31        | 19.21       | 22.8             | 570                   | 7                         |
 
 
-![](https://s3.hedgedoc.org/demo/uploads/d4f8e151-7e6d-46d3-9efe-5eec034b52a4.png)
+![image pooled unpooled](images/pooled_unpooled.png)
 
 We observe a trend where the use of unpooled representations enhances the performance of models with finetuned LMs, while it has a negative impact on frozen LM architectures.
 
@@ -353,13 +352,23 @@ Here we perform an ablation study investigating impact of the hidden layer size 
 | FLAN-T5 (Decoder) | 2048                  | 91.22   | **18.08**   | 5.6              | 149                   | 2.624                     |
 | FLAN-T5 (Decoder) | 3840                  | **91.23**   | 18.03   | 6                | 151                   | 4.92                      |
 
-![](https://s3.hedgedoc.org/demo/uploads/bd777884-4fd7-47f1-82fe-313099c4c581.png)
+![](images/scores_hidden_layers.png)
 
 We observe that performance exhibits a sharp increase for hidden layer sizes below 512 indicating their impact on the model's performance. However, once this threshold is surpassed, further increases in hidden layer size result in similar performance levels despite the addition of a substantial number of trainable parameters. From these findings, we can infer that a hidden layer size of 512 would be optimal for this specific use case.
 
 ### Application of LoRA
 
-We apply LoRA to the baseline architecture (MLP mapper + GPT2) and our best-performing model, . We also test it across all layers as well as a subset of layers of the LM.
+We apply LoRA to the baseline architecture (MLP mapper + GPT2) and our best-performing model, FLAN-T5 LM with a decoder only architecture and a MLP mapper processing unpooled CLIP embeddings. We test this for 3 FLAN-T5 sizes - base, small, and large. Additionally, we attempt to analyse how the application of LoRA to different layers of the language model could affect the results, for which we select 2 cases - applying LoRA to all Linear layers of the LM, and applying it a smaller subset of layers. In case of GPT2, we apply it to "c_attn" and "c_proj", and in case of FLAN-T5, to the "q" and "v" matrices. Motivated by the results from  [Hu et al. (2021)](https://arxiv.org/abs/2106.09685), we decided to apply LoRA to this specific subset of layers in the LM. 
+
+For the LoRA experiments, we use the following hyperparameters
+
+|Hyperparameter|Value|
+|--------------|-----|
+|Rank          |4    |
+|Alpha         |32   |
+|Dropout       |0.01 |
+
+
 
  Language Model    | Language Model Size | LM Finetuning           | LM Total Parameters(M)  ↓ | LM Trainable Parameters(M)  ↓ | % Reduction Trainable Parameters ↑| CIDEr   ↑   | SPICE    ↑   | Runtime(Hours)  ↓ | Total Parameters(M)  ↓ | Trainable Parameters(M)  ↓ |
 | ----------------- | ------------------- | ----------------------- | ---------------------- | -------------------------- | -------------------------------- | ----------- | ----------- | -------------- | ------------------- | ----------------------- |
@@ -383,12 +392,14 @@ We apply LoRA to the baseline architecture (MLP mapper + GPT2) and our best-perf
 | FLAN-T5 (Decoder)-base     | 163     | 108.81       | 20.24                | 1.127  <span style="color:green"> **(0.69%)** </span> | 102.29 <span style="color:red"> **(-6.52)** </span> | 19.43 <span style="color:red"> **(-0.81)** </span> | 0.295  <span style="color:green"> **(0.18%)** </span> | 101.12 <span style="color:red"> **(-7.68)** </span> | 19.2 <span style="color:red"> **(-1.04)** </span> |
 | FLAN-T5 (Decoder)-small    | 58.5    | 103.60       | 19.64                 | 0.507  <span style="color:green"> **(0.87%)** </span> | 98.69 <span style="color:red"> **(-4.91)** </span> | 18.94 <span style="color:red"> **(-0.7)** </span> | 0.115  <span style="color:green"> **(0.2%)** </span>| 95.09 <span style="color:red"> **(-8.5)** </span> | 18.73 <span style="color:red"> **(-0.9)** </span> |
 
+We can observe from the obtained results that the models when trained with LoRA, shows a significant  deacrease in trainable parameters (~99.5% reduction on an average), while achieving a comparable but lower scores on both CIDEr and SPICE metrics
 
+We 
 ### T5 Weights
 
-Additionally, we have performed a comparison of performance on selected FLAN-T5-based architecture with different weights - FLAN-T5 and original T5 ones. We have selected the best performing model on the COCO dataset, finetuned FLAN-T5 Decoder Only with unpooled representations, and its version with frozen LM.
+We conducted a performance comparison on selected FLAN-T5 architectures with different weights: FLAN-T5 and original T5. To assess this comparison, we have selected the best performing model on the COCO dataset, which is the finetuned FLAN-T5 Decoder only with unpooled representations, and its version with the frozen LM.
 
-![](https://s3.hedgedoc.org/demo/uploads/8841ff3d-685d-41a2-a009-e72ff88c7e81.png)
+![](images/Flan_flant5.png)
 
 
 
@@ -419,21 +430,17 @@ We can see that the model utilizing the frozen T5 produces repetitive and incohe
 | FLAN-T5 (Decoder Only), small, Unpooled, MLP, FT                            | 60.48               | 10.66               | 79.25                  | 11.79                  | 62.85                    | 10.9                     | 39.58                   | 8.8                     |
 | FLAN-T5, base, Pooled, MLP, FT                                              | 59.81               | 10.23               | 78.22                  | 11.42                  | 61.49                    | 10.39                    | 41.35                   | 8.62                    |
 
-Surprisingly, the highest performing model on nocaps dataset is finetuned GPT-2 based architecture with unpooled representations, which outperforms all reported model in the original ClipCap paper. Again, fine-tuned models generally perform better than their non-fine-tuned equivalent. On all its different implementations the "FLAN-T5 (Decoder Only)" models consistently perform well, with scores ranging from 55.91 to 67.36 for nocaps CIDEr and from 9.76 to 11.3 for nocaps SPICE. Larger model sizes (such as "FLAN-T5 (Decoder Only), large" and "FLAN-T5 (Decoder Only), base") generally lead to better performance compared to smaller models (such as "FLAN-T5 (Decoder Only), small").
+Surprisingly, the highest performing model on nocaps dataset is finetuned GPT-2 based architecture with unpooled representations, which outperforms all reported model in the original ClipCap paper. Again, fine-tuned models generally perform better than their non-fine-tuned equivalent. On all its different implementations the FLAN-T5 Decoder only models consistently perform well, with scores ranging from 55.91 to 67.36 for nocaps CIDEr and from 9.76 to 11.3 for nocaps SPICE. Larger model sizes generally lead to better performance compared to smaller models.
 
 
 ### Qualitative Results
 
+Using THumb to do the human evaluation on COCO and NOCAPS we define precision (P : from 0 to 5), which refers to how accurate and relevant the caption is, and recall (R : from 0 to 5), which measures the extent to which the caption covers important information from the image. Additionally, we considered the fluency (F : between -1 and 0) of the sentence. The toal score (Total) is the average between precision and recall adjusted by the fluency penalty. Each caption is followed by a table of the different scores as following : [Total, P, R, F]
+
 ##### COCO
 
-We assign subjectivly ... scores, and put the after the caption. With the following order:
-- Total : Total score (average between P and R, adjusted with F)
-- P : Precision
-- R : Recall
-- F : Fluency
-- [Total, P, R, F]
 
-| Images                      | ![](images/coco_1.png) | ![](images/coco_2.png) | ![](images/coco_3.png) | ![](images/coco_4.png) | ![](images/coco_5.png) |
+| Images                      | ![coco_1](images/coco_1.png) | ![coco_2](images/coco_2.png) | ![coco_3](images/coco_3.png) | ![coco_4](images/coco_4.png) | ![coco_5](images/coco_5.png) |
 |-----------------------------|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------|---------------------------------------------------------------------------------|
 | GPT-2, base, Pooled, MLP, No FT [*Clipcap MLP*]                 | A man riding a motorcycle on a dirt road.<br/> [**4**, 5, 3, 0]                          | A woman is holding a cake with a child in it. <br/>[3, 3, 3, 0]                      | A man is standing on a train with a red train. <br/>[3.5, 3, 4, 0]                   | A kitchen with a stove and a sink. <br/>[4.5, 5, 4, 0]                               | A wooden table with many wooden pieces. <br/>[4, 5, 3, 0]                            |
 | GPT-2, base, Pooled, MLP, FT              | A man riding a motorcycle down a dirt road. <br/>[**4**, 5, 3, 0]                        | A woman is eating a chocolate cake with a candle. <br/>[**4**, 4, 4, 0]                  | A man walking past a train on a train track. <br/>[**4**, 4, 4, 0]                       | A kitchen with a stove, sink, and window. <br/>[**5**, 5, 5, 0]                          | A bunch of wooden bowls and spoons on a table. <br/>[4.5, 5, 4, 0]                   |
@@ -453,7 +460,7 @@ The FLAN-T5 (Decoder Only) model variations, utilizing unpooled representations 
 ##### Nocaps
 
 
-| Images                      | *In domain* ![](images/nocaps_1.jpg)             | *Near-domain*  ![](images/nocaps_2.jpg)          | *Out-domain* ![](images/nocaps_3.jpg)              |
+| Images                      | *In domain* ![nocaps_1](images/nocaps_1.jpg)             | *Near-domain*  ![nocaps_2](images/nocaps_2.jpg)          | *Out-domain* ![nocaps_3](images/nocaps_3.jpg)              |
 |-----------------------------|---------------------------------------------------------------------------|-------------------------------------------------------------------------|----------------------------------------------------------------------------|
 | GPT-2, base, Pooled, MLP, No FT  [*Clipcap MLP*]                 | A boy standing in front of a wooden bench. <br/>[4, 4, 4, 0]                    | A man riding on a elephant with a man on top. <br/>[1.5, 2, 2, -0.5]         | A coffee and a bottle of soda on a table. <br/>[3.5, 4, 3, 0]                    |
 | GPT-2, base, Pooled, MLP, FT              | A young boy standing next to a parked motorcycle. <br/>[3.5, 3, 4,0 ]           | A man riding on the back of an elephant. <br/>[2, 2, 2, 0]                    | A table topped with a cup of coffee and a box of ice cream. <br/>[2.5, 2, 3, 0]  |
@@ -476,20 +483,19 @@ On the other hand, the finetuned FLAN-T5 (base), which utilized pooled represent
 
 ## Discussion and Conclusion
 
-- there's a general pattern that replacing lm to flant5 gives better results on coco, to flant5 decoder![](https://s3.hedgedoc.org/demo/uploads/267113b2-10f2-46fa-a43d-9327dd737eca.png)
- even better
-- using unpooled representations projected with mlp, generally improves results when finetuning lm, and worses otherwise
-"This may be due to the fact that for unpooled representations, each token is processed individually, which primarily provides local information about the image. Consequently, the language model needs to adapt to effectively utilize this information, whereas the baseline method can generate suitable captions relying on the prefix alone."
-- we need an MLP with hidden layer size of only 512 neurons, to propely project clip unpooled representations into FLAN-T5 decoder representation space; it can give us satisfactory results with only 7 million trainable parameter
-- we can see from t5 flant5 comparison, that when lm is frozen, the performence dramatically drops for the T5 version; it confirms that FLAN as a finetuning method, greatly improves model robustness
 
-(when putting some general claims, maybe highlight the fact that all these results were observed for out setup, that ie. includes greedy search for generation)
-
-In our evaluation, the FLAN-T5 models consistently achieve higher scores on the COCO dataset, indicating their strong performance in generating captions for a wide range of images. However, it is noteworthy that the GPT2-based model with unpooled CLIP representations and fine-tuning emerges as the best-performing model on the Nocaps dataset.
+In our evaluation, the FLAN-T5 models consistently achieve higher scores on the COCO dataset, indicating their strong performance in generating captions for a wide range of images. However, it is noteworthy that the GPT-2 based model with unpooled CLIP representations and fine-tuning emerges as the best-performing model on the Nocaps dataset.
 
 The distinguishing factor between these models lies primarily in the LM, while the other parameters remain consistent. One possible explanation for this observation is that, despite FLAN-T5 being trained on a diverse set of tasks, it may not possess the same level of robustness as GPT2, which benefits from being trained on a vast and diverse range of data. This suggests that the diversity of data that the LM has been exposed to may play a crucial role in the it's ability to generalize and produce accurate captions across different datasets.
 
-(Answer hypothesis of approachs: Replacing LM with different appraoches, comment on full flan-t5, decoder only. Pick up the patterns. Talk about the unpooled representations. Comment on LoRA results)
+Another notable observation is the impact of using unpooled representations projected with an MLP on the model's performance. Specifically, we observed that it generally improves results when finetuning the language model, but worsens performance otherwise. This can be attributed to the fact that unpooled representations process each token individually, providing more local information about the image. As a result, the language model needs to adapt to effectively utilize this information, whereas the baseline method can generate suitable captions relying on the prefix alone.
+
+Our findings also indicate that employing an MLP with a hidden layer size of just 512 neurons is sufficient for proper projection of CLIP's unpooled representations into the FLAN-T5 decoder's representation space. This yields satisfactory results while keeping the number of trainable parameters at only 7 million.
+
+Furthermore, our comparison of T5 and FLAN-T5 weights revealed a significant drop in performance for the frozen T5 version. This confirms that FLAN, as a finetuning method, greatly enhances the model's robustness and its ability to handle new tasks.
+
+In conclusion, we achieved better performance on COCO and nocaps datasets with less trainable parameters through our proposed approaches. FLAN-T5 architectures consistently demonstrated superior results, especially Decoder only variants. By leveraging unpooled representations and applying fine-tuning, the performance gain provides empirical evidence supporting our hypothesis that unpooled representations contain useful image-specific information that can be effectively utilized for captioning. We found that using LoRA, we can reduce the number of trainable parameters significantly, while still achieving similar results to the baselines, with a slight drop in performance. These findings contribute to advancing the field of image captioning and provide valuable insights for developing more efficient and accurate models in the future.
+
 
 ## Further Work
 
@@ -501,33 +507,67 @@ In addition, we see value in examining the integration of global information alo
 ## Individual Contribution
 
 Dawid Kopiczko:
-- design of architectures and approaches used
-- implementation of training pipeline
-- implementation of baseline architectures
-- implementation of unpooled clip representations approach
-- adaptation of initial generation algorithm into pipeline
-- preparing slurm environment
-- determining and running experiments
-- adapting nocaps dataset generation into pipeline and optimization
-- implementation of script preparing coco dataset
-- evaluation on coco + utilities like storing captions for evalai benchmark
-- writing blogpost
+- Design of architectures and approaches used
+- Implementation of training pipeline, including dataset loading and processing, checkpointing, logging metrics with wandb
+- Implementation of baseline architectures
+- Implementation of unpooled clip representations approach
+- Adaptation of initial generation algorithm into pipeline
+- Preparing slurm environment
+- Determining and running experiments
+- Adapting nocaps dataset generation into pipeline and optimization
+- Implementation of script preparing coco dataset with Karpathy split
+- Implementation of evaluation algorithm for coco dataset
+- Implemented utilities including storing captions for evalai benchmark
+- Exploring different approaches and methods not included in the final work/report:
+    - unpooled representations without projection, with fine-tuning of language model
+    - use of different CLIP models, cosine scheduler
+    - gradient clipping, MLP with dropout, more hidden layers, and different activations
+    - flattened unpooled CLIP representations
+- Writing blogpost
 
 Tom Pelletreau-Duris:
 
 - Comparative analysis of datasets
 - Comparative analysis of metrics
-- Implementation of nocaps dataset into pipeline and optimization
-- Reformating annoations json files
+- Implementation of nocaps dataset into pipeline
+- Reformating annotations json files
 - Second pipeline with LIZA cluster (unfinished)
 - Standardisation of the qualitative evaluation
 - Comparative analysis of quantiative and qualitative evaluations
-- Results
-- Discussions
+- Writing blogpost
+- Nocaps results and tables
+- Qualitative results and tables
 
-Abishek:
+Abishek Thamma:
 
+- Understanding scope of PEFT approaches, and feasibility of application of LoRA
+- Implementation of LoRA to different architectures
+- Identification of best hyperparameters for LoRA from literature
+- Implemention of parallelisation to caption generation pipeline component
+- Collation of final results and creating a consolidated raw data asset for coco dataset
+    - Combining results from wandb datasources, formatting and tagging across categories
+- Reformatting nocaps results and creation of data asset
+- Writing blogpost
+    - Background and Key components
+    - PEFT Approaches
+    - Quantitative results - tables and observations
+-
 Priyakshi:
 
-Dheeraj:
+- Comprehensive study on image captioning metrics
+- Implementation of evaluation for COCO
+- Comparative Visualization of results
+- Writing blogpost
+
+
+Dheeraj Varghese:
+
+- Aided the design of architectures and approaches used.
+- Implemented the integration of the FLAN-T5 models (both full and decoder only versions) into the ClipCap architecture. 
+- Implemented the batched version of greedy-search caption generation for faster inference and evaluation.
+- Integration of the caption generation (during evaluation) with the wandb for analysis of generated captions.
+- Reproduced the original ClipCap results on the COCO dataset, and adapted the validation annotations to match their format.
+- Execution of the original ClipCap on the LISA cluster.
+- Designed the images for the implemented architectures. 
+- Collaborated in the writing of the blog post covering various aspects, including the approaches and architectures used, description of the obtained results and more.
 
