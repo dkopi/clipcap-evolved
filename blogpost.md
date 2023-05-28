@@ -24,7 +24,7 @@ The authours of ClipCap propose a simple yet effective technique to generate cap
 
 Their second approach demonstrate that training the mapping network alone can yield competent captioning results while keeping CLIP and the LM frozen.
 
-![Clipcap](images/Clipcap.jpg)
+![Clipcap](images/Clipcap.png)
 
 
 At the time of their publication, this method achieved comparable performance to State-Of-The-Art approaches on challenging datasets such as Conceptual Captions and nocaps, while being simpler, faster, and lighter. However, it is worth noting a couple of potential weaknesses. Firstly, they failed to explore the utility of unpooled visual representations, which may affect its ability to capture fine-grained visual details; and the limited evaluation with different language models, which may leave room for further exploration and analysis. This is exactly what inspired us to explore and pursue this research direction.
@@ -42,7 +42,7 @@ Contrastive Language Pre-Training (CLIP) is an efficient method of learning  fro
 #### Architecture
 CLIP architecture consists of two main components, a text encoder, and an image encoder. These two encoders are jointly trained using a contrastive learning approach to predict the correct pairings of a batch of training (image, text) examples. The CLIP model encodes textual and visual information into a multimodal embedding space, with an aim to increase the cosine similarity score of images and text representations. 
 
-![architecture_1](images/architecture_1.jpg)
+![architecture_1](images/architecture_1.jpeg)
 
 
 The original clip implementation uses a transformer as its text encoder. For the image encoder, the authors propose two separate architectures, one with a [ResNet](https://arxiv.org/abs/1512.03385), and the other with a [Vision Transformer (ViT)](https://arxiv.org/abs/2010.11929).
@@ -50,7 +50,7 @@ The original clip implementation uses a transformer as its text encoder. For the
 ###### Vision Transformer
 The Vision Transformer (ViT) model architecture was introduced in the paper titled “An Image is Worth 16*16 Words: Transformers for Image Recognition at Scale”, where the authors utilise the transformer architecture for image processing tasks. The proposed architecture involves processing images by splitting an image into fixed size patches, linearly embedding them along with positional embeddings, and then inputting the resultant sequence of vectors to a standard transformer architecture.
 
-![architecture_2](images/architecture_2.jpg)
+![architecture_2](images/architecture_2.jpeg)
 
 
 The results of the experiments demonstrate that the ViT encoder architecture performs better than the ResNet based encoder architecture on a wide range of datasets. Additionally, the baseline ClipCap implementation uses the CLIP-ViT as its image encoder.
@@ -334,7 +334,7 @@ In terms of the CIDEr score, all FLAN-T5 variations outperform the baseline mode
 | FLAN-T5 (Decoder) | large   | Frozen        | Unpooled        | 99.31        | 19.21       | 22.8             | 570                   | 7                         |
 
 
-![image pooled unpooled](images/pooled_unpooled.png)
+![image pooled unpooled](images/pool_unpooled.png)
 
 We observe a trend where the use of unpooled representations enhances the performance of models with finetuned LMs, while it has a negative impact on frozen LM architectures.
 
@@ -551,7 +551,7 @@ Abishek Thamma:
     - Background and Key components
     - PEFT Approaches
     - Quantitative results - tables and observations
--
+
 Priyakshi:
 
 - Comprehensive study on image captioning metrics
