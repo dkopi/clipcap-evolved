@@ -139,9 +139,6 @@ Based on this observation, we explore the use of encoder-decoder models as a pro
 #### Using FLAN-T5 as the LM
 ![CLIP-VIT/32 + MLP + FLAN-T5](images/Flant5_1.png)
 
-
-Here, we chose to examine only the approach using an MLP mapper, given that the transformer from ClipCap inherently serves as an encoder. Introducing a transformer mapper into an already existing encoder-decoder architecture would be redundant and potentially unnecessary.
-
 #### Using FLAN-T5 Decoder Only
 
 Another approach in our exploration involves utilising only the decoder component of the FLAN-T5 model. In this variant, we decided to bypass the encoder and feed the inputs from the previous components directly to the pre-trained cross attention layers of the decoder. We tested this variant with the two mappers: MLP and Transformer.
