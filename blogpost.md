@@ -147,10 +147,10 @@ Here, we chose to examine only the approach using an MLP mapper, given that the 
 Another approach in our exploration involves utilising only the decoder component of the FLAN-T5 model. In this variant, we decided to bypass the encoder and feed the inputs from the previous components directly to the pre-trained cross attention layers of the decoder. We tested this variant with the two mappers: MLP and Transformer.
 
 ##### FLAN-T5 Decoder, The MLP Approach
-![CLIP-VIT/32 + MLP + FLAN-T5 Decoder Only](images/Flant5_2.png)
+![CLIP-VIT/32 + MLP + FLAN-T5 Decoder Only](images/flant5_2.png)
 
 ##### FLAN-T5 Decoder, The Transformer Approach
-![CLIP-VIT/32 + Transformer + FLAN-T5 Decoder Only](images/Flant5_3.png)
+![CLIP-VIT/32 + Transformer + FLAN-T5 Decoder Only](images/flant5_3.png)
 
 
 ### Beyond Pooled Features: Exploiting Visual Representations
